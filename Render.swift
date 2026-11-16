@@ -8,6 +8,7 @@ enum RenderTargets {
         guard launchArguments.count >= 4, launchArguments[1] == "--render" else { return }
         switch launchArguments[2] {
         case "island": island(launchArguments)
+        case "islandstates": islandStates(launchArguments)
         case "spectrumbar": spectrumBar(launchArguments)
         default: return
         }
@@ -85,6 +86,115 @@ enum RenderTargets {
     try! bitmap.representation(using: .png, properties: [:])!.write(to: URL(fileURLWithPath: launchArguments[3]))
     print("已渲染：\(launchArguments[3])")
     exit(0)
+    }
+
+    /// README 用：灵动岛的各种状态，每种一张图（3 倍），画在菜单栏底色上。
+    /// --render islandstates <输出目录>
+    private static func islandStates(_ launchArguments: [String]) {
+        let dir = URL(fileURLWithPath: launchArguments[3], isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let scale: CGFloat = 3, rowHeight: CGFloat = 24, margin: CGFloat = 14
+        let menuBar = NSColor(srgbRed: 0.16, green: 0.27, blue: 0.5, alpha: 1)
+        let art = NSImage(size: NSSize(width: 100, height: 100), flipped: false) { rect in
+            NSGradient(starting: NSColor(srgbRed: 1, green: 0.45, blue: 0.3, alpha: 1),
+                       ending: NSColor(srgbRed: 0.55, green: 0.15, blue: 0.5, alpha: 1))!.draw(in: rect, angle: -45)
+            return true
+        }
+        let levels = (0..<SpectrumAnalyzer.bandCount).map { i in
+            Float(min(max(0.2 + 0.6 * exp(-pow(Double(i) - 4, 2) / 12) + 0.35 * exp(-pow(Double(i) - 12, 2) / 16) + 0.06 * sin(Double(i) * 2.1), 0.1), 0.95))
+        }
+        func icon(path: String) -> NSImage { NSWorkspace.shared.icon(forFile: path) }
+
+        enum Audio { case music, paused, video, other }
+        func makeBars(_ kind: Audio) -> SpectrumBarsView {
+            let bars = SpectrumBarsView(frame: NSRect(x: 0, y: 0, width: 200, height: rowHeight))
+            bars.embedded = true
+            switch kind {
+            case .music, .paused:
+                bars.artwork = art
+                bars.tint = NowPlayingMonitor.dominantColor(of: art)
+                bars.hasMedia = true
+                bars.playing = kind == .music
+                bars.appIcon = SpectrumController.appIcon(bundle: "com.netease.163music")
+            case .video:
+                bars.hasMedia = true
+                bars.playing = true
+                bars.playPauseOnly = true
+                let chrome = icon(path: "/Applications/Google Chrome.app")
+                bars.appIcon = SpectrumController.rasterizedIcon(chrome, inset: 0.12)
+                bars.iconTint = NowPlayingMonitor.dominantColor(of: chrome)
+            case .other:
+                let game = icon(path: "/Applications/VideoFusion-macOS.app")
+                bars.appIcon = SpectrumController.rasterizedIcon(game, inset: 0.12)
+                bars.iconTint = NowPlayingMonitor.dominantColor(of: game)
+            }
+            bars.layer?.contentsScale = scale
+            bars.layer?.sublayers?.forEach { $0.contentsScale = scale }
+            bars.frame.size.width = bars.preferredWidth
+            bars.update(kind == .paused ? levels.map { _ in 0 } : levels, audible: kind != .paused)
+            return bars
+        }
+
+        let all = MetricsIslandView.demoSegments()
+        let compact = all.filter { [.cpu, .memory, .temperature, .network].contains($0.metric) }   // 刘海屏机型默认
+        let rings = StatusIcons.bluetooth([(symbol: "keyboard", battery: 64), (symbol: "computermouse", battery: 15), (symbol: "headphones", battery: 80)])
+        let states: [(name: String, segments: [(metric: Metric, image: NSImage)], audio: Audio?, trailing: NSImage?, notch: Bool)] = [
+            ("metrics", all, nil, rings, false),
+            ("no-bluetooth", all, nil, nil, false),
+            ("notch", compact, nil, rings, true),
+            ("music", all, .music, rings, false),
+            ("paused", all, .paused, rings, false),
+            ("video", all, .video, rings, false),
+            ("other", all, .other, rings, false),
+            ("music-only", [], .music, nil, false),
+        ]
+        for state in states {
+            let view = MetricsIslandView(frame: .zero)
+            view.segments = state.segments
+            view.trailing = state.trailing
+            var bars: SpectrumBarsView?
+            if let kind = state.audio {
+                let b = makeBars(kind)
+                bars = b
+                view.audio = (b, b.preferredWidth)
+                view.audioLeadsWithCircle = b.leadsWithCircle
+                view.backdrop = SpectrumLook(backdrop: .gradient).backdropColors(tint: b.effectiveTint)
+            }
+            view.frame = NSRect(x: 0, y: 0, width: view.preferredWidth, height: rowHeight)
+            view.layout()
+            let notchWidth: CGFloat = state.notch ? 190 : 0
+            let width = view.preferredWidth + margin * 2 + notchWidth
+            let bitmap = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: Int(width * scale), pixelsHigh: Int(rowHeight * scale),
+                                          bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
+                                          colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0)!
+            bitmap.size = NSSize(width: width, height: rowHeight)
+            NSGraphicsContext.saveGraphicsState()
+            NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: bitmap)
+            menuBar.setFill()
+            NSRect(x: 0, y: 0, width: width, height: rowHeight).fill()
+            if state.notch {
+                // 刘海：顶边贴屏幕边缘、下边两角圆
+                let notch = NSRect(x: margin, y: -10, width: notchWidth - margin * 2, height: rowHeight + 10)
+                NSColor.black.setFill()
+                NSBezierPath(roundedRect: notch, xRadius: 9, yRadius: 9).fill()
+            }
+            if let context = NSGraphicsContext.current?.cgContext {
+                context.saveGState()
+                context.translateBy(x: margin + notchWidth, y: 0)
+                NSAppearance(named: .darkAqua)!.performAsCurrentDrawingAppearance { view.draw(view.bounds) }
+                if let bars {
+                    let origin = bars.convert(NSPoint.zero, to: view)
+                    context.translateBy(x: origin.x, y: origin.y)
+                    bars.layer?.render(in: context)
+                }
+                context.restoreGState()
+            }
+            NSGraphicsContext.restoreGraphicsState()
+            let url = dir.appendingPathComponent("island-\(state.name).png")
+            try! bitmap.representation(using: .png, properties: [:])!.write(to: url)
+            print("已渲染：\(url.path)")
+        }
+        exit(0)
     }
 
     private static func spectrumBar(_ launchArguments: [String]) {

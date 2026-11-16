@@ -21,14 +21,46 @@ Islet 是一个 macOS 菜单栏工具。它把 CPU、内存、网速这些常看
 
 ## 灵动岛
 
-<p align="center">
-  <img src="docs/screenshots/island.png" width="760" alt="上：平时只显示指标；下：播放音乐时展开封面、按钮和频谱">
-</p>
+同一枚胶囊，会随着连接的设备、正在出声的程序而变化：
 
-上面是平时的样子，下面是在放歌的时候。
+<table>
+  <tr>
+    <td width="170" nowrap>平时<br><sub>右侧圆环是蓝牙电量</sub></td>
+    <td><img src="docs/screenshots/island-metrics.png" height="30" alt="平时"></td>
+  </tr>
+  <tr>
+    <td width="170" nowrap>没有连接蓝牙设备</td>
+    <td><img src="docs/screenshots/island-no-bluetooth.png" height="30" alt="没有连接蓝牙设备"></td>
+  </tr>
+  <tr>
+    <td width="170" nowrap>刘海屏 MacBook<br><sub>默认只留常用指标</sub></td>
+    <td><img src="docs/screenshots/island-notch.png" height="30" alt="刘海屏 MacBook"></td>
+  </tr>
+  <tr>
+    <td width="170" nowrap>播放音乐<br><sub>颜色取自封面</sub></td>
+    <td><img src="docs/screenshots/island-music.png" height="30" alt="播放音乐"></td>
+  </tr>
+  <tr>
+    <td width="170" nowrap>音乐暂停</td>
+    <td><img src="docs/screenshots/island-paused.png" height="30" alt="音乐暂停"></td>
+  </tr>
+  <tr>
+    <td width="170" nowrap>播放视频<br><sub>只有播放 / 暂停</sub></td>
+    <td><img src="docs/screenshots/island-video.png" height="30" alt="播放视频"></td>
+  </tr>
+  <tr>
+    <td width="170" nowrap>其他程序出声<br><sub>显示程序图标</sub></td>
+    <td><img src="docs/screenshots/island-other.png" height="30" alt="其他程序出声"></td>
+  </tr>
+  <tr>
+    <td width="170" nowrap>关掉全部指标<br><sub>有声音时才出现</sub></td>
+    <td><img src="docs/screenshots/island-music-only.png" height="30" alt="关掉全部指标"></td>
+  </tr>
+</table>
 
 - 显示哪些指标、按什么顺序排，都在设置里拖动调整。网速可以只显示上传和下载中较快的一方，CPU、GPU 也可以换成迷你曲线。
-- 右侧的圆环是已连接蓝牙设备的电量，绿、橙、红分别表示充足、偏低、不足。
+- 蓝牙电量圆环的绿、橙、红分别表示充足、偏低、不足。
+- 刘海屏机型的菜单栏放不下太多东西，Islet 第一次运行时只打开常用的几项，其余的可以在设置里再打开；没有风扇的机型（比如 MacBook Air）默认不显示风扇。
 - 岛固定在菜单栏最左侧。有新图标挤进来或者被 ⌘ 拖走，它会自己回到原位（可以关掉）。
 - 胶囊外有一圈细亮边，在深色壁纸上也不会和菜单栏糊在一起。
 
