@@ -744,7 +744,7 @@ final class SpectrumController: NSObject, NSPopoverDelegate {
     }
 
     /// 灵动岛里点了频谱部分。
-    func hostClicked(_ sender: NSStatusBarButton, anchor: NSRect) {
+    func hostClicked(_ sender: NSView, anchor: NSRect) {
         handleClick(sender, anchor: anchor)
     }
 
@@ -809,7 +809,7 @@ final class SpectrumController: NSObject, NSPopoverDelegate {
     /// 由主程序设置：打开设置窗口。
     var openSettings: () -> Void = {}
     /// 右键菜单（设置、关于、退出），由主程序提供。
-    var contextMenu: () -> NSMenu? = { nil }
+    var showContextMenu: (NSView) -> Void = { _ in }
     private var scrollMonitor: Any?
 
     /// 安静多久后隐藏（秒）；0 表示一直显示。
@@ -1050,11 +1050,11 @@ final class SpectrumController: NSObject, NSPopoverDelegate {
         handleClick(sender, anchor: sender.bounds)
     }
 
-    private func handleClick(_ sender: NSStatusBarButton, anchor: NSRect) {
+    private func handleClick(_ sender: NSView, anchor: NSRect) {
         // 右键（或按住 Control 点击）：原生菜单
         if let event = NSApp.currentEvent, event.type == .rightMouseUp || event.modifierFlags.contains(.control) {
             popover.performClose(nil)
-            contextMenu()?.popUp(positioning: nil, at: NSPoint(x: 0, y: sender.bounds.height + 5), in: sender)
+            showContextMenu(sender)
             return
         }
         // 点在菜单栏的播放按钮上：直接控制播放，不打开面板

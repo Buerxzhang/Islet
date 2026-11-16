@@ -347,6 +347,8 @@ struct MenuBarPreview: NSViewRepresentable {
         }()
         private var timer: Timer?
         private var phase: Double = 0
+        /// 岛的当前宽度（未合成时为 0）。
+        var islandWidth: CGFloat { island?.frame.width ?? 0 }
 
         override init(frame: NSRect) {
             super.init(frame: frame)
@@ -381,14 +383,31 @@ struct MenuBarPreview: NSViewRepresentable {
                 island.backdrop = bars.look.backdropColors(tint: SpectrumController.isEnabled ? bars.tint : nil)
                 // 岛按实际大小居中显示
                 container.frame = bounds
+                // 先定高度再取宽度：两端圆形的留白按高度计算，高度为 0 时宽度会少算
+                if island.frame.height != 24 { island.frame.size.height = 24 }
                 let width = island.preferredWidth
                 island.frame = NSRect(x: ((bounds.width - width) / 2).rounded(), y: ((bounds.height - 24) / 2).rounded(), width: width, height: 24)
                 island.layout()
+                fitWindowToIsland(capsuleWidth: width - 6)
             } else {
                 let width = bars.preferredWidth
                 bars.frame = NSRect(x: bounds.width - width - 14, y: (bounds.height - 24) / 2, width: width, height: 24)
             }
             bars.refresh()
+        }
+
+        /// 设置窗口跟着岛定宽：预览区和下面的卡片同宽，所以把窗口加宽 / 收窄“岛宽 − 预览区宽”，
+        /// 岛和卡片就一样宽。指标关得很少、岛很短时，内容至少留 480，设置行不会挤。
+        private func fitWindowToIsland(capsuleWidth: CGFloat) {
+            guard let window, window.styleMask.contains(.resizable) else { return }
+            let delta = max(capsuleWidth, 480) - bounds.width
+            guard abs(delta) > 0.5 else { return }
+            DispatchQueue.main.async {
+                var frame = window.frame
+                frame.size.width = (frame.width + delta).rounded()
+                window.minSize = NSSize(width: frame.width, height: window.minSize.height)
+                window.setFrame(frame, display: true)
+            }
         }
 
         func apply(_ look: SpectrumLook, merged: Bool) {
@@ -450,6 +469,14 @@ struct MenuBarPreview: NSViewRepresentable {
                        ending: NSColor(srgbRed: 0.6, green: 0.2, blue: 0.65, alpha: 1))!.draw(in: rect, angle: -45)
             return true
         }
+    }
+
+    /// 预览里的岛按当前设置的实际宽度（设置窗口据此定宽，让岛和下面的卡片一样宽）。
+    static func islandWidth() -> CGFloat {
+        let host = Host(frame: NSRect(x: 0, y: 0, width: 1200, height: 46))
+        host.apply(SpectrumLook.current, merged: true)
+        host.layout()
+        return host.islandWidth
     }
 
     func makeNSView(context: Context) -> Host {

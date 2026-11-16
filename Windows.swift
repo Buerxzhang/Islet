@@ -13,6 +13,7 @@ final class WindowManager {
     func show<Content: View>(_ id: String, title: String, size: NSSize, resizable: Bool = false, @ViewBuilder content: () -> Content) {
         if let window = windows[id] {
             window.appearance = AppearanceSetting.current.nsAppearance
+            if resizable { fitWidth(window, to: size.width) }
             bringToFront(window)
             return
         }
@@ -28,8 +29,6 @@ final class WindowManager {
         window.isExcludedFromWindowsMenu = true
         window.contentViewController = NSHostingController(rootView: content())
         window.setContentSize(size)
-        if resizable { window.minSize = NSSize(width: size.width, height: 480) }
-        // 记住的窗口位置可能还是旧的较小尺寸：宽度至少为设计宽度
         window.appearance = AppearanceSetting.current.nsAppearance
         // 普通层级：切到别的程序时正常退到后面；窗口打开期间在程序坞显示图标，可从程序坞或 ⌘Tab 切回来
         window.level = .normal
@@ -37,11 +36,8 @@ final class WindowManager {
         window.hidesOnDeactivate = false
         // 记住窗口位置：第一次居中，之后在上次拖到的地方打开
         if window.setFrameUsingName("islet.\(id)") {
-            if window.frame.width < size.width {
-                var frame = window.frame
-                frame.size.width = size.width
-                window.setFrame(frame, display: false)
-            }
+            // 记住的是上次的位置；宽度按这次的设计宽度（设置窗口随岛的宽度变化）
+            if resizable { fitWidth(window, to: size.width) }
         } else {
             window.center()
         }
@@ -51,6 +47,16 @@ final class WindowManager {
         }
         windows[id] = window
         bringToFront(window)
+    }
+
+    /// 可调大小的窗口：宽度设为设计宽度（左上角不动），并以它为最小宽度。
+    private func fitWidth(_ window: NSWindow, to contentWidth: CGFloat) {
+        let width = window.frameRect(forContentRect: NSRect(x: 0, y: 0, width: contentWidth, height: 100)).width
+        window.minSize = NSSize(width: width, height: 480)
+        guard abs(window.frame.width - width) > 0.5 else { return }
+        var frame = window.frame
+        frame.size.width = width
+        window.setFrame(frame, display: true)
     }
 
     /// 有窗口开着时在程序坞显示图标（菜单栏程序平时没有，窗口落到后面就找不回来）；全部关闭后隐藏。
@@ -126,6 +132,9 @@ final class SettingsModel: ObservableObject {
     var onChange: (SpeedSetting) -> Void = { _ in }
     var onAppearance: () -> Void = {}
     var onMetricOrder: () -> Void = {}
+    var onFullScreenFloatingIsland: (Bool) -> Void = { _ in }
+    var onFreeFloatingIsland: (Bool) -> Void = { _ in }
+    var onFloatingIsland: (Bool) -> Void = { _ in }
     var onKeepLeftmost: () -> Void = {}
     var onUnits: () -> Void = {}
     @Published var alertRules = AlertCenter.rules
@@ -395,11 +404,25 @@ struct SettingsView: View {
         }
         .frame(maxWidth: .infinity)
         section(p, "位置") {
-            row(p, "始终在菜单栏最左侧", "关闭后可按住 ⌘ 拖到任意位置", icon: "pin.fill", tint: Color(hex: 0x30D158)) {
-                Toggle2(isOn: AppDelegate.keepsLeftmost) { on in
-                    UserDefaults.standard.set(on, forKey: "keepLeftmost")
-                    if on { model.onKeepLeftmost() }
-                    model.refresh()
+            row(p, "全局悬浮", "将胶囊居中放在刘海或菜单栏下方", icon: "rectangle.on.rectangle", tint: Color(hex: 0x0A84FF)) {
+                Toggle2(isOn: AppDelegate.floatsIsland, onChange: model.onFloatingIsland)
+            }
+            divider(p)
+            if AppDelegate.floatsIsland {
+                row(p, "全屏时保持悬浮", "在支持的全屏视频和游戏上显示胶囊", icon: "arrow.up.left.and.arrow.down.right", tint: Color(hex: 0x0A84FF)) {
+                    Toggle2(isOn: AppDelegate.fullScreenFloatingIsland, onChange: model.onFullScreenFloatingIsland)
+                }
+                divider(p)
+                row(p, "自由拖动", "按住胶囊拖到想放的位置", icon: "hand.draw", tint: Color(hex: 0x0A84FF)) {
+                    Toggle2(isOn: AppDelegate.freeFloatingIsland, onChange: model.onFreeFloatingIsland)
+                }
+            } else {
+                row(p, "始终在菜单栏最左侧", "关闭后可按住 ⌘ 拖到任意位置", icon: "pin.fill", tint: Color(hex: 0x30D158)) {
+                    Toggle2(isOn: AppDelegate.keepsLeftmost) { on in
+                        UserDefaults.standard.set(on, forKey: "keepLeftmost")
+                        if on { model.onKeepLeftmost() }
+                        model.refresh()
+                    }
                 }
             }
         }

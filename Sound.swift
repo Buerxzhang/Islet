@@ -759,7 +759,7 @@ final class SoundController: NSObject, NSPopoverDelegate {
     }
 
     /// 点了菜单栏的蓝牙：打开 / 关闭蓝牙面板。
-    func toggleBluetoothPanel(from button: NSStatusBarButton, anchor: NSRect) {
+    func toggleBluetoothPanel(from button: NSView, anchor: NSRect) {
         if bluetoothPopover.isShown {
             bluetoothPopover.performClose(nil)
             return

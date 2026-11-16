@@ -63,8 +63,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         view.autoresizingMask = [.width, .height]
         // 音乐部分展开 / 收起时，菜单栏项宽度逐帧跟随（内容靠右排，指标不动）
         view.onWidthChange = { [weak self] width in
-            guard let self, !self.islandAnimating, let item = self.islandItem, item.isVisible, width > 0 else { return }
-            item.length = width
+            self?.layoutIsland(width: width)
         }
         return view
     }()
@@ -88,6 +87,152 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         return item
     }
 
+    // MARK: 悬浮位置
+
+    private static let floatingKey = "floatingIsland"
+    static var floatsIsland: Bool { UserDefaults.standard.bool(forKey: floatingKey) }
+    private static let fullScreenFloatingKey = "fullScreenFloatingIsland"
+    static var fullScreenFloatingIsland: Bool { UserDefaults.standard.bool(forKey: fullScreenFloatingKey) }
+    private static var floatingWindowLevel: NSWindow.Level {
+        // 部分全屏游戏把窗口放在菜单栏层（24）之上的 27 层；全屏悬浮开启时用 28 层盖过它们，
+        // 但仍低于系统弹出菜单（101），不会挡住菜单。
+        fullScreenFloatingIsland ? NSWindow.Level(rawValue: 28) : .floating
+    }
+
+    private static var floatingCollectionBehavior: NSWindow.CollectionBehavior {
+        if fullScreenFloatingIsland {
+            return [.canJoinAllSpaces, .canJoinAllApplications, .fullScreenAuxiliary, .ignoresCycle]
+        }
+        return [.canJoinAllSpaces, .fullScreenNone, .ignoresCycle]
+    }
+
+    private static let floatingOriginKey = "floatingIslandOrigin"
+    static var freeFloatingIsland: Bool { UserDefaults.standard.bool(forKey: "freeFloatingIsland") }
+    private var floatingOrigin = UserDefaults.standard.string(forKey: AppDelegate.floatingOriginKey).map(NSPointFromString)
+    private var floatingPanel: NSPanel?
+    private var floatingScreen: NSNumber?
+    private var islandAnchor: NSView? {
+        if Self.floatsIsland { return floatingPanel?.contentView }
+        return islandItem?.button
+    }
+
+    private func setFloatingIsland(_ enabled: Bool) {
+        guard enabled != Self.floatsIsland else { return }
+        popover.performClose(nil)
+        closePanel()
+        SoundController.shared.closeBluetoothPanel()
+        SpectrumController.shared.closePanel()
+        islandAnimation?.invalidate()
+        islandAnimating = false
+        islandView.alphaValue = 1
+        let screen = NSScreen.screens.first { $0.frame.contains(NSEvent.mouseLocation) }
+        floatingScreen = screen?.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber
+        UserDefaults.standard.set(enabled, forKey: Self.floatingKey)
+        updateIsland()
+        settingsModel.refresh()
+    }
+
+    private func setFullScreenFloatingIsland(_ enabled: Bool) {
+        UserDefaults.standard.set(enabled, forKey: Self.fullScreenFloatingKey)
+        floatingPanel?.level = Self.floatingWindowLevel
+        floatingPanel?.collectionBehavior = Self.floatingCollectionBehavior
+        settingsModel.refresh()
+    }
+
+    private func setFreeFloatingIsland(_ free: Bool) {
+        popover.performClose(nil)
+        closePanel()
+        SoundController.shared.closeBluetoothPanel()
+        SpectrumController.shared.closePanel()
+        UserDefaults.standard.set(free, forKey: "freeFloatingIsland")
+        updateIsland()
+        settingsModel.refresh()
+    }
+
+    private func dragIsland(to point: NSPoint, finished: Bool) {
+        if popover.isShown || pendingMetric != nil { popover.performClose(nil); closePanel() }
+        SoundController.shared.closeBluetoothPanel()
+        SpectrumController.shared.closePanel()
+        floatingOrigin = point
+        if let screen = NSScreen.screens.first(where: { $0.frame.contains(NSEvent.mouseLocation) }) {
+            floatingScreen = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber
+        }
+        layoutIsland(width: islandView.preferredWidth)
+        if finished, let frame = floatingPanel?.frame {
+            let origin = NSPoint(x: frame.minX, y: frame.maxY)
+            floatingOrigin = origin
+            UserDefaults.standard.set(NSStringFromPoint(origin), forKey: Self.floatingOriginKey)
+        }
+    }
+
+    @objc private func floatingScreenChanged() {
+        if Self.floatsIsland { layoutIsland(width: islandView.preferredWidth) }
+    }
+
+    private func layoutIsland(width: CGFloat) {
+        guard let item = islandItem, let button = item.button else { return }
+        guard Self.floatsIsland else {
+            if let floatingPanel {
+                floatingPanel.orderOut(nil)
+                self.floatingPanel = nil
+                islandView.frame = button.bounds
+                button.addSubview(islandView)
+            }
+            if item.isVisible != (width > 0) { item.isVisible = width > 0 }
+            if !islandAnimating, width > 0, item.length != width { item.length = width }
+            return
+        }
+
+        if floatingPanel == nil {
+            let panel = NSPanel(contentRect: .zero, styleMask: [.borderless, .nonactivatingPanel],
+                                backing: .buffered, defer: true)
+            panel.level = Self.floatingWindowLevel
+            panel.collectionBehavior = Self.floatingCollectionBehavior
+            panel.hidesOnDeactivate = false
+            panel.isOpaque = false
+            panel.backgroundColor = .clear
+            panel.title = "islet 全局悬浮"
+            let anchor = FloatingIslandButton(frame: .zero)
+            anchor.title = ""
+            anchor.isBordered = false
+            anchor.setAccessibilityLabel("系统指标")
+            anchor.target = self
+            anchor.action = #selector(islandClicked(_:))
+            anchor.onDrag = { [weak self] point, finished in self?.dragIsland(to: point, finished: finished) }
+            panel.contentView = anchor
+            islandView.frame = anchor.bounds
+            anchor.addSubview(islandView)
+            floatingPanel = panel
+            item.isVisible = false
+        }
+        guard let panel = floatingPanel else { return }
+        (panel.contentView as? FloatingIslandButton)?.canDrag = Self.freeFloatingIsland
+        let savedScreen = floatingOrigin.flatMap { position in
+            NSScreen.screens.first { $0.frame.insetBy(dx: -1, dy: -1).contains(position) }
+        }
+        let selectedScreen = NSScreen.screens.first {
+            $0.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber == floatingScreen
+        }
+        let screen = (Self.freeFloatingIsland ? selectedScreen ?? savedScreen : selectedScreen)
+            ?? button.window?.screen ?? NSScreen.main
+        let size = NSSize(width: width, height: max(26, NSStatusBar.system.thickness))
+        guard size.width > 0, !sleeping, let screen else {
+            if panel.isVisible { panel.orderOut(nil) }
+            return
+        }
+        let safeTop = screen.frame.maxY - max(screen.safeAreaInsets.top, NSStatusBar.system.thickness)
+        let top = min(screen.visibleFrame.maxY, safeTop)
+        let available = screen.visibleFrame.insetBy(dx: 8, dy: 0)
+        let fittedWidth = min(size.width, available.width)
+        let fittedHeight = min(size.height, top - available.minY)
+        let origin = Self.freeFloatingIsland ? floatingOrigin : nil
+        let x = min(max(origin?.x ?? screen.frame.midX - fittedWidth / 2, available.minX), available.maxX - fittedWidth)
+        let y = min(max((origin?.y ?? top - 8) - fittedHeight, available.minY), top - fittedHeight)
+        let frame = NSRect(x: x, y: y, width: fittedWidth, height: fittedHeight).integral
+        if panel.frame != frame { panel.setFrame(frame, display: true) }
+        if !panel.isVisible { panel.orderFrontRegardless() }
+    }
+
     // MARK: 保持在最左侧
 
     /// 设置：菜单栏里始终排在最左（其他程序新出现的图标会被挤到右边）。
@@ -97,7 +242,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     /// 新建的菜单栏项总是出现在最左：把我们的项换新名字重建一次，就回到最左。
     /// （系统不提供其他程序菜单栏图标的位置，无法判断是否被挤到右边，所以在有程序启动后统一重建一次。）
     func moveToLeftmost() {
-        guard Self.keepsLeftmost, renderRequest == nil, !sleeping else { return }
+        guard Self.keepsLeftmost, !Self.floatsIsland, renderRequest == nil, !sleeping else { return }
         if popover.isShown || SpectrumController.shared.visualizer.isOpen { scheduleLeftmost(after: 5); return }
         SpectrumController.shared.closePanel()
         StatusItemNames.renew()
@@ -249,7 +394,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         _ = island
         applyItemVisibility()
         SpectrumController.shared.openSettings = { [weak self] in self?.openSettings(page: .menuBar, expand: "music") }
-        SpectrumController.shared.contextMenu = { [weak self] in self?.contextMenu() }
+        SpectrumController.shared.showContextMenu = { [weak self] anchor in self?.showIslandMenu(from: anchor) }
         SpectrumController.shared.setHost(self)   // 频谱放进灵动岛左侧
         SpectrumController.shared.start()  // 在指标项之后创建：排在 CPU 左侧
         SoundController.shared.openSettings = { [weak self] in self?.openSettings(page: .menuBar, expand: "bluetooth") }
@@ -293,6 +438,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
                   point.y >= screen.frame.maxY - NSStatusBar.system.thickness - 6 else { return }
             self?.scheduleLeftmost(after: 0.4)
         }
+        NotificationCenter.default.addObserver(self, selector: #selector(floatingScreenChanged),
+                                               name: NSApplication.didChangeScreenParametersNotification, object: nil)
         workspace.addObserver(self, selector: #selector(didWake), name: NSWorkspace.didWakeNotification, object: nil)
         // 屏幕关闭 / 切换用户时菜单栏不可见，暂停采样省电
         workspace.addObserver(self, selector: #selector(willSleep), name: NSWorkspace.screensDidSleepNotification, object: nil)
@@ -349,24 +496,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             accessibilityValues[metric].map { "\(metric.accessibilityLabel) \($0)" }
         }
         let audioSummary = view.audio != nil ? SpectrumController.shared.accessibilitySummary : nil
-        island.item.button?.setAccessibilityValue(([audioSummary].compactMap { $0 } + summary).joined(separator: "，"))
-        let width = view.preferredWidth
-        if island.item.isVisible != (width > 0) { island.item.isVisible = width > 0 }
-        guard !islandAnimating else { return }   // 换位置的动画中由动画控制宽度
-        if width > 0, island.item.length != width { island.item.length = width }
+        layoutIsland(width: view.preferredWidth)
+        islandAnchor?.setAccessibilityValue(([audioSummary].compactMap { $0 } + summary).joined(separator: "，"))
     }
 
-    @objc private func islandClicked(_ sender: NSStatusBarButton) {
+    @objc private func islandClicked(_ sender: NSView) {
         if let event = NSApp.currentEvent, event.type == .rightMouseUp || event.modifierFlags.contains(.control) {
             popover.performClose(nil)
-            contextMenu().popUp(positioning: nil, at: NSPoint(x: 0, y: sender.bounds.height + 5), in: sender)
+            showIslandMenu(from: sender)
             return
         }
         guard let window = sender.window else { return }
         let view = island.view
         let point = view.convert(window.mouseLocationOutsideOfEventStream, from: nil)
         // 末尾的蓝牙设备：打开蓝牙面板
-        if let trailing = view.trailingFrame, trailing.minX <= point.x, point.x <= trailing.maxX {
+        if let trailing = view.trailingFrame, trailing.contains(point) {
             if popover.isShown || pendingMetric != nil { popover.close(); closePanel() }
             SpectrumController.shared.closePanel()
             SoundController.shared.toggleBluetoothPanel(from: sender, anchor: view.convert(trailing, to: sender))
@@ -374,7 +518,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         }
         SoundController.shared.closeBluetoothPanel()
         // 左侧音频部分：交给频谱（播放按钮、面板）
-        if let audioRect = view.audioRect, audioRect.minX <= point.x, point.x <= audioRect.maxX {
+        if let audioRect = view.audioRect, audioRect.contains(point) {
             if popover.isShown || pendingMetric != nil {
                 popover.close()
                 closePanel()
@@ -685,6 +829,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             }
         }
         settingsModel.onMetricOrder = { [weak self] in self?.metricOrderChanged() }
+        settingsModel.onFullScreenFloatingIsland = { [weak self] in self?.setFullScreenFloatingIsland($0) }
+        settingsModel.onFreeFloatingIsland = { [weak self] in self?.setFreeFloatingIsland($0) }
+        settingsModel.onFloatingIsland = { [weak self] in self?.setFloatingIsland($0) }
         settingsModel.onKeepLeftmost = { [weak self] in self?.moveToLeftmost() }   // 重新打开置顶：立即回到最左
         settingsModel.onUnits = { [weak self] in
             self?.iconKeys.removeAll()   // 单位变了：重画所有指标
@@ -716,8 +863,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         }
     }
 
-    /// 菜单栏右键菜单：设置、关于、退出。
-    private func contextMenu() -> NSMenu {
+    /// 右键菜单（系统原生菜单：点任意位置都会关闭，带快捷键提示）：设置、全局悬浮、关于、退出。
+    private func islandMenu() -> NSMenu {
         let menu = NSMenu()
         let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? ""
         let title = NSMenuItem(title: "islet \(version)", action: nil, keyEquivalent: "")
@@ -727,24 +874,46 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         let settings = NSMenuItem(title: "设置…", action: #selector(menuOpenSettings), keyEquivalent: ",")
         settings.target = self
         menu.addItem(settings)
+        let floating = NSMenuItem(title: "全局悬浮", action: #selector(menuToggleFloating), keyEquivalent: "")
+        floating.target = self
+        floating.state = Self.floatsIsland ? .on : .off
+        menu.addItem(floating)
         let about = NSMenuItem(title: "关于 islet", action: #selector(menuOpenAbout), keyEquivalent: "")
         about.target = self
         menu.addItem(about)
         menu.addItem(.separator())
-        let quit = NSMenuItem(title: "退出 islet", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
-        menu.addItem(quit)
+        menu.addItem(NSMenuItem(title: "退出 islet", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
         return menu
+    }
+
+    private func showIslandMenu(from anchor: NSView) {
+        SoundController.shared.closeBluetoothPanel()
+        SpectrumController.shared.closePanel()
+        // 菜单栏里：从按钮下沿弹出；悬浮时：在鼠标位置弹出
+        let mouse = anchor.convert(anchor.window?.mouseLocationOutsideOfEventStream ?? .zero, from: nil)
+        let point = Self.floatsIsland && anchor.bounds.contains(mouse) ? mouse : NSPoint(x: 0, y: anchor.bounds.height + 5)
+        islandMenu().popUp(positioning: nil, at: point, in: anchor)
     }
 
     @objc private func menuOpenSettings() { openSettings() }
     @objc private func menuOpenAbout() { openSettings(page: .about) }
+    @objc private func menuToggleFloating() { setFloatingIsland(!Self.floatsIsland) }
+
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        openSettings()
+        return false
+    }
 
     private func openSettings(page: SettingsPage? = nil, expand: String? = nil) {
         if let page { settingsModel.page = page }
         if let expand { settingsModel.expanded.insert(expand) }
         popover.performClose(nil)
         updateControlTemperatures()
-        windows.show("settings", title: "islet 设置", size: NSSize(width: 960, height: 620), resizable: true) {
+        // 宽度 = 侧栏 190 + 分隔线 1 + 内容左右边距 22×2 + 预览里岛的宽度：岛和下面的卡片一样宽。
+        // 指标关得很少、岛很短时，内容至少留 480，设置行不会挤
+        let content = max(MenuBarPreview.islandWidth(), 480)
+        let width = ceil(190 + 1 + 22 * 2 + content)
+        windows.show("settings", title: "islet 设置", size: NSSize(width: width, height: 620), resizable: true) {
             SettingsView(model: settingsModel)
         }
     }
@@ -789,7 +958,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
 
     /// 点击某个菜单栏指标：打开它的排行；再点同一个关闭；点另一个直接切过去。
     /// 取一份新样本（几十毫秒）与后台快照对比，数据就绪后才弹出，打开即可看到排行。
-    private func togglePanel(_ metric: Metric, from button: NSStatusBarButton, anchor: NSRect? = nil) {
+    private func togglePanel(_ metric: Metric, from button: NSView, anchor: NSRect? = nil) {
         if popover.isShown || pendingMetric != nil {
             let same = (shownMetric ?? pendingMetric) == metric
             popover.close()
@@ -812,7 +981,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         }
     }
 
-    private func present(_ metric: Metric, from button: NSStatusBarButton, anchor: NSRect? = nil, with result: Collected) {
+    private func present(_ metric: Metric, from button: NSView, anchor: NSRect? = nil, with result: Collected) {
+        guard button.window?.isVisible == true else { return }
         panel.metric = metric
         panel.expanded = false
         panel.fixedDraft = nil
@@ -879,7 +1049,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         localClickMonitor = NSEvent.addLocalMonitorForEvents(matching: mouseDown) { [weak self] event in
             guard let self, self.popover.isShown, event.window !== self.hosting.view.window else { return event }
             // 点到自己的菜单栏图标时交给 togglePanel 处理（关闭或切换）
-            if let button = self.island.item.button, event.window === button.window,
+            if let button = self.islandAnchor, event.window === button.window,
                button.bounds.contains(button.convert(event.locationInWindow, from: nil)) {
                 return event
             }
@@ -1128,6 +1298,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         }
         TrafficLedger.shared.save()
         sleeping = true
+        floatingPanel?.orderOut(nil)
         cpuLoad.reset()
         previousDisk = nil
         trafficSnapshots.removeAll()
@@ -1145,6 +1316,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         sleeping = false
         resetSampling()
         refresh()
+        updateIsland()   // 睡眠时收起了悬浮窗：唤醒后直接放回来，不等指标数值变化
     }
 
     private func resetSampling() {
@@ -1545,7 +1717,6 @@ app.setActivationPolicy(.accessory)
 app.run()
 
 extension AppDelegate: SpectrumHost {
-    var hostButton: NSStatusBarButton? { island.item.button }
     func embed(_ view: SpectrumBarsView?) {
         if view == nil { island.view.audio = nil }
         updateIsland()

@@ -29,11 +29,55 @@ enum StatusItemNames {
 
 /// 合并显示时承载频谱的菜单栏项（指标灵动岛）。
 protocol SpectrumHost: AnyObject {
-    var hostButton: NSStatusBarButton? { get }
     /// 放入（或移除，nil）频谱视图。
     func embed(_ view: SpectrumBarsView?)
     /// 频谱出现 / 消失 / 宽度或颜色变化，需要重新排版。
     func spectrumLayoutChanged()
+}
+
+/// 透明按钮承载胶囊，把左右键交给与菜单栏共用的分发逻辑。
+final class FloatingIslandButton: NSButton {
+    var canDrag = false
+    var onDrag: (NSPoint, Bool) -> Void = { _, _ in }
+    private var mouseStart: NSPoint?
+    private var windowStart: NSPoint = .zero
+    private var dragged = false
+
+    override func mouseDown(with event: NSEvent) {
+        guard canDrag, !event.modifierFlags.contains(.control), let window else {
+            super.mouseDown(with: event)
+            return
+        }
+        mouseStart = NSEvent.mouseLocation
+        windowStart = NSPoint(x: window.frame.minX, y: window.frame.maxY)
+        dragged = false
+    }
+
+    override func mouseDragged(with event: NSEvent) {
+        guard let mouseStart else { return }
+        let current = NSEvent.mouseLocation
+        let dx = current.x - mouseStart.x, dy = current.y - mouseStart.y
+        guard dragged || hypot(dx, dy) >= 4 else { return }
+        dragged = true
+        onDrag(NSPoint(x: windowStart.x + dx, y: windowStart.y + dy), false)
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        guard let start = mouseStart else { super.mouseUp(with: event); return }
+        mouseStart = nil
+        let current = NSEvent.mouseLocation
+        if dragged {
+            onDrag(NSPoint(x: windowStart.x + current.x - start.x, y: windowStart.y + current.y - start.y), true)
+        } else if bounds.contains(convert(event.locationInWindow, from: nil)) {
+            sendAction(action, to: target)
+        }
+    }
+
+    override func rightMouseUp(with event: NSEvent) {
+        if bounds.contains(convert(event.locationInWindow, from: nil)) {
+            sendAction(action, to: target)
+        }
+    }
 }
 
 /// “指标灵动岛”：把各指标合成一块深色胶囊。
@@ -295,15 +339,14 @@ final class MetricsIslandView: NSView {
             audioClip.alphaValue = min(reveal * 1.4, 1) * (1 - hudAlpha)
         }
         let shape = capsule
+        let radius = min(shape.height, shape.width) / 2
         maskLayer.frame = bounds
-        maskLayer.path = CGPath(roundedRect: shape, cornerWidth: min(shape.height, shape.width) / 2,
-                                cornerHeight: shape.height / 2, transform: nil)
+        maskLayer.path = CGPath(roundedRect: shape, cornerWidth: radius, cornerHeight: radius, transform: nil)
         let edge = shape.insetBy(dx: 0.5, dy: 0.5)
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         borderLayer.frame = bounds
-        borderLayer.path = edge.width > 0 ? CGPath(roundedRect: edge, cornerWidth: min(edge.height, edge.width) / 2,
-                                                   cornerHeight: edge.height / 2, transform: nil) : nil
+        borderLayer.path = edge.width > 0 ? CGPath(roundedRect: edge, cornerWidth: radius, cornerHeight: radius, transform: nil) : nil
         CATransaction.commit()
     }
 
@@ -340,7 +383,7 @@ final class MetricsIslandView: NSView {
 
     func metric(at point: NSPoint) -> Metric? {
         guard capsule.insetBy(dx: -2, dy: -4).contains(point) else { return nil }
-        return frames().first { $0.rect.minX <= point.x && point.x <= $0.rect.maxX }?.metric
+        return frames().first { $0.rect.contains(point) }?.metric
     }
 
     override func draw(_ dirtyRect: NSRect) {
@@ -348,7 +391,8 @@ final class MetricsIslandView: NSView {
         let placements = layoutSlots()
         let shape = capsule
         guard shape.width > 0 else { return }
-        let path = NSBezierPath(roundedRect: shape, xRadius: min(shape.height, shape.width) / 2, yRadius: shape.height / 2)
+        let radius = min(shape.height, shape.width) / 2
+        let path = NSBezierPath(roundedRect: shape, xRadius: radius, yRadius: radius)
         let backdrop = shownBackdrop
         if backdrop.count > 1, backdrop.first != backdrop.last, let gradient = NSGradient(colors: backdrop) {
             gradient.draw(in: path, angle: 0)
@@ -368,7 +412,7 @@ final class MetricsIslandView: NSView {
                 NSBezierPath(roundedRect: highlight, xRadius: 6, yRadius: 6).fill()
             }
             guard let image = segments.first(where: { $0.metric == metric })?.image else { continue }
-            let origin = NSPoint(x: rect.minX + Self.gap / 2, y: ((bounds.height - image.size.height) / 2).rounded())
+            let origin = NSPoint(x: rect.minX + Self.gap / 2, y: (rect.midY - image.size.height / 2).rounded())
             image.draw(in: NSRect(origin: origin, size: image.size))
         }
         if let trailing, let rect = trailingFrame {
@@ -377,7 +421,7 @@ final class MetricsIslandView: NSView {
                 NSColor(white: 1, alpha: 0.16).setFill()
                 NSBezierPath(roundedRect: highlight, xRadius: 6, yRadius: 6).fill()
             }
-            trailing.draw(in: NSRect(x: rect.minX + Self.gap / 2, y: ((bounds.height - trailing.size.height) / 2).rounded(),
+            trailing.draw(in: NSRect(x: rect.minX + Self.gap / 2, y: (rect.midY - trailing.size.height / 2).rounded(),
                                      width: trailing.size.width, height: trailing.size.height))
         }
         // 临时提示：先用底色盖住胶囊，再画图标、进度条和数值
@@ -386,10 +430,11 @@ final class MetricsIslandView: NSView {
             path.fill()
             let alpha = hudAlpha
             let height = bounds.height
+            let y: CGFloat = 0
             var x = shape.minX + Self.padding + 4
             if let symbol = NSImage(systemSymbolName: hud.symbol, accessibilityDescription: nil)?
                 .withSymbolConfiguration(.init(pointSize: 11, weight: .semibold).applying(.init(paletteColors: [.white]))) {
-                symbol.draw(in: NSRect(x: x, y: (height - symbol.size.height) / 2, width: symbol.size.width, height: symbol.size.height),
+                symbol.draw(in: NSRect(x: x, y: y + (height - symbol.size.height) / 2, width: symbol.size.width, height: symbol.size.height),
                             from: .zero, operation: .sourceOver, fraction: alpha)
                 x += symbol.size.width + 8
             }
@@ -398,8 +443,8 @@ final class MetricsIslandView: NSView {
                                                              .foregroundColor: NSColor.white.withAlphaComponent(alpha)]
             let textSize = text.size(withAttributes: attributes)
             let textX = shape.maxX - Self.padding - 4 - textSize.width
-            text.draw(at: NSPoint(x: textX, y: (height - textSize.height) / 2), withAttributes: attributes)
-            let track = NSRect(x: x, y: height / 2 - 2, width: max(textX - 10 - x, 10), height: 4)
+            text.draw(at: NSPoint(x: textX, y: y + (height - textSize.height) / 2), withAttributes: attributes)
+            let track = NSRect(x: x, y: y + height / 2 - 2, width: max(textX - 10 - x, 10), height: 4)
             NSColor.white.withAlphaComponent(0.2 * alpha).setFill()
             NSBezierPath(roundedRect: track, xRadius: 2, yRadius: 2).fill()
             var filled = track
