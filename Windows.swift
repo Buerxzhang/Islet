@@ -177,6 +177,8 @@ final class SettingsModel: ObservableObject {
             select(.direction, on ? (UserDefaults.standard.object(forKey: "networkLastMode") as? Int ?? 0) : 2)
         default:
             if let setting = Self.metricSetting(id) { select(setting, on ? 0 : 1) }
+            // 帧率需要屏幕录制权限：打开时向系统申请（已授权则不弹）
+            if id == "fps", on, !CGPreflightScreenCaptureAccess() { CGRequestScreenCaptureAccess() }
         }
         refresh()
     }
@@ -529,7 +531,7 @@ struct SettingsView: View {
         default:
             let setting = SettingsModel.metricSetting(id)
             let icon = setting.map(Self.metricIcon) ?? ("circle", Color.gray)
-            return (setting?.title ?? id, icon.0, icon.1, ["fan"].contains(id))
+            return (setting?.title ?? id, icon.0, icon.1, ["fan", "fps"].contains(id))
         }
     }
 
@@ -565,6 +567,7 @@ struct SettingsView: View {
         case "bluetooth": bluetoothDetail(p)
         case "network": networkDetail(p)
         case "fan": fanDetail(p)
+        case "fps": fpsDetail(p)
         default: EmptyView()
         }
     }
@@ -664,6 +667,21 @@ struct SettingsView: View {
                     guard confirmAlert("清零流量统计？", "今日和本月的上传、下载记录会归零。") else { return }
                     TrafficLedger.shared.reset()
                     model.refresh()
+                }
+            }
+        }
+    }
+
+    /// 帧率：测量方式说明和屏幕录制权限。
+    private func fpsDetail(_ p: Palette) -> some View {
+        detail(p) {
+            detailRow(p, "测量方式", "统计前台窗口每秒画面变化的次数；画面静止时数字会变低，最高不超过屏幕刷新率") { EmptyView() }
+            detailRow(p, "屏幕录制权限", CGPreflightScreenCaptureAccess() ? "已授权。只数画面变化，不保存、不上传画面" : "未授权：在系统设置里打开 islet 后重新启动 islet") {
+                PlainButton(title: CGPreflightScreenCaptureAccess() ? "已授权" : "打开权限设置…") {
+                    if !CGPreflightScreenCaptureAccess() { CGRequestScreenCaptureAccess() }
+                    if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture") {
+                        NSWorkspace.shared.open(url)
+                    }
                 }
             }
         }
@@ -791,6 +809,7 @@ struct SettingsView: View {
         case .power: return .powerItem
         case .temperature: return .temperatureItem
         case .fan: return .fanItem
+        case .fps: return .fpsItem
         case .network: return nil
         }
     }
@@ -804,6 +823,7 @@ struct SettingsView: View {
         case .powerItem: return ("bolt.fill", Color(hex: 0xFFB800))
         case .temperatureItem: return ("thermometer.medium", Color(hex: 0xFF9F0A))
         case .fanItem: return ("fanblades.fill", Color(hex: 0x30B0C7))
+        case .fpsItem: return ("gauge.with.needle.fill", Color(hex: 0xFF375F))
         default: return ("circle.fill", Color(hex: 0x8E8E93))
         }
     }

@@ -2,7 +2,7 @@ import AppKit
 
 enum SpeedSetting: Int, CaseIterable {
     // 顺序即设置窗口中的排列顺序；存储用 key，不依赖 rawValue
-    case direction, cpuItem, gpuItem, memoryItem, diskItem, powerItem, fanItem, temperatureItem, interval, count
+    case direction, cpuItem, gpuItem, memoryItem, diskItem, powerItem, fanItem, temperatureItem, fpsItem, interval, count
 
     var key: String {
         switch self {
@@ -16,6 +16,7 @@ enum SpeedSetting: Int, CaseIterable {
         case .powerItem: return "showPowerItem"
         case .fanItem: return "showFanItem"
         case .temperatureItem: return "showTemperatureItem"
+        case .fpsItem: return "showFPSItem"
         }
     }
 
@@ -29,6 +30,7 @@ enum SpeedSetting: Int, CaseIterable {
         case .powerItem: return "功耗"
         case .fanItem: return "风扇"
         case .temperatureItem: return "温度"
+        case .fpsItem: return "帧率"
         case .interval: return "菜单栏刷新频率"
         case .count: return "排行显示条数"
         }
@@ -37,7 +39,7 @@ enum SpeedSetting: Int, CaseIterable {
     var choices: [String] {
         switch self {
         case .direction: return ["自动", "上传和下载", "隐藏"]
-        case .cpuItem, .gpuItem, .memoryItem, .diskItem, .powerItem, .fanItem, .temperatureItem: return ["在菜单栏显示", "隐藏"]
+        case .cpuItem, .gpuItem, .memoryItem, .diskItem, .powerItem, .fanItem, .temperatureItem, .fpsItem: return ["在菜单栏显示", "隐藏"]
         case .interval: return ["每 1 秒", "每 2 秒", "每 3 秒"]
         case .count: return ["3 条", "5 条", "8 条"]
         }
@@ -45,9 +47,10 @@ enum SpeedSetting: Int, CaseIterable {
 
     /// 按机型决定的默认隐藏项（只在用户没改过时生效）：
     /// - 没有风扇的机型（MacBook Air 等）：风扇默认不显示；
-    /// - 带刘海的屏幕（菜单栏右侧空间有限）：只默认显示 CPU、内存、温度、网速几项核心指标。
+    /// - 带刘海的屏幕（菜单栏右侧空间有限）：只默认显示 CPU、内存、温度、网速几项核心指标；
+    /// - 帧率：需要屏幕录制权限，默认不显示，用户自己打开。
     static let hiddenByDefault: Set<SpeedSetting> = {
-        var hidden: Set<SpeedSetting> = []
+        var hidden: Set<SpeedSetting> = [.fpsItem]
         if Fan.readAll().isEmpty { hidden.insert(.fanItem) }
         if NSScreen.screens.contains(where: { $0.safeAreaInsets.top > 0 }) {
             hidden.formUnion([.gpuItem, .diskItem, .powerItem, .fanItem])
@@ -84,6 +87,7 @@ extension Metric {
         case .power: return .powerItem
         case .fan: return .fanItem
         case .temperature: return .temperatureItem
+        case .fps: return .fpsItem
         }
     }
 
@@ -131,7 +135,11 @@ enum IslandOrder {
             saved = ["music"] + metrics + ["bluetooth"]
         }
         var order: [String] = []
-        for id in saved + standard where standard.contains(id) && !order.contains(id) { order.append(id) }
+        for id in saved where standard.contains(id) && !order.contains(id) { order.append(id) }
+        // 新版本新增的项（如帧率）：插在蓝牙前面，而不是排到最后
+        for id in standard where !order.contains(id) {
+            if let bluetooth = order.firstIndex(of: "bluetooth") { order.insert(id, at: bluetooth) } else { order.append(id) }
+        }
         return order
     }
 
@@ -140,6 +148,6 @@ enum IslandOrder {
 
 /// 指标的顺序（从灵动岛顺序里取出指标）。
 enum MetricOrder {
-    static let standard: [Metric] = [.cpu, .gpu, .memory, .disk, .power, .temperature, .fan, .network]
+    static let standard: [Metric] = [.cpu, .gpu, .memory, .disk, .power, .temperature, .fan, .network, .fps]
     static var current: [Metric] { IslandOrder.items.compactMap { id in Metric.allCases.first { "\($0)" == id } } }
 }

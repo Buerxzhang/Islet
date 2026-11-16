@@ -347,6 +347,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private var lastRates: (upload: Double, download: Double)?
     private var interfaceLabel = "—"
     private var peakWatts: Double = 30
+    // 帧率（见 FPSMeter.swift）：显示或面板打开时才测
+    private var fpsMeter: FPSMeter?
+    private var fpsGeneration = 0          // 每次开始 / 停止加一：异步启动完成时若已过期就丢弃
+    private var fpsStarting = false
+    private var fpsSamples: [Int] = []     // 最近 3 秒，取中位数，单秒尖峰不影响显示
+    private var fpsValue: Int?
+    private var fpsTarget = "—"
+    private var fpsRefresh = NSScreen.main?.maximumFramesPerSecond ?? 60
+    private var fpsStatus = "准备中"
+    private var fpsRetryAt = Date.distantPast
     private var peakDownload: Double = 1_000_000  // 网速圆环的满格：本次运行以来的下载峰值（至少 1MB/s）
     private var timer: Timer?
     private let panel = PanelModel()
@@ -441,6 +451,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         NotificationCenter.default.addObserver(self, selector: #selector(floatingScreenChanged),
                                                name: NSApplication.didChangeScreenParametersNotification, object: nil)
         workspace.addObserver(self, selector: #selector(didWake), name: NSWorkspace.didWakeNotification, object: nil)
+        workspace.addObserver(self, selector: #selector(frontmostAppChanged), name: NSWorkspace.didActivateApplicationNotification, object: nil)
         // 屏幕关闭 / 切换用户时菜单栏不可见，暂停采样省电
         workspace.addObserver(self, selector: #selector(willSleep), name: NSWorkspace.screensDidSleepNotification, object: nil)
         workspace.addObserver(self, selector: #selector(didWake), name: NSWorkspace.screensDidWakeNotification, object: nil)
@@ -990,7 +1001,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         panel.rows = []
         shownMetric = metric
         popover.appearance = AppearanceSetting.current.nsAppearance
-        if metric == .fan || metric == .temperature || metric == .gpu || metric == .power {
+        if metric == .fan || metric == .temperature || metric == .gpu || metric == .power || metric == .fps {
             refresh()  // 这些面板的主数据卡需要温度 / 风扇读数，打开时先刷新一次
         }
         updateHero()
@@ -1089,7 +1100,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     }
 
     private func render(_ result: Collected, metric: Metric) {
-        guard metric != .temperature else { return }  // 温度面板没有应用排行
+        guard metric != .temperature, metric != .fps else { return }  // 温度、帧率面板没有应用排行
         if result.failed {
             panel.rows = []
             panel.message = metric == .network ? "暂时无法读取应用流量" : "暂时无法读取进程信息"
@@ -1110,6 +1121,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     /// 采样、进程路径解析与排序都在后台队列，回调在主线程。
     private func collect(_ metric: Metric, completion: @escaping (Collected) -> Void) {
         let started = Date()
+        if metric == .fps {
+            completion(Collected(ranking: [], failed: false))   // 帧率面板没有应用排行
+            return
+        }
         if metric == .temperature {
             // 温度面板的数据在 refresh 里直接读 SMC，不需要应用排行
             updateThermal()
@@ -1143,7 +1158,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             case .gpu:
                 gpu = GPUSample.read(includeClients: true)
                 ranking = gpuBase.flatMap { old in gpu?.ranking(since: old, resolver: resolver) }
-            case .temperature:
+            case .temperature, .fps:
                 break  // 已在上面同步处理
             }
             let failed = traffic == nil && processes == nil && gpu == nil
@@ -1290,6 +1305,88 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         FanHelperClient.shared.releaseBeforeQuit()
     }
 
+    // MARK: 帧率
+
+    @objc private func frontmostAppChanged() {
+        guard wants(.fps), !sleeping else { return }
+        fpsRetryAt = .distantPast
+        updateFPSMeter()
+    }
+
+    /// 帧率：没权限、前台程序没有窗口时显示“—”；前台程序换了就换测量目标。
+    private func updateFPSMeter() {
+        guard wants(.fps), !sleeping else { stopFPSMeter(); return }
+        guard CGPreflightScreenCaptureAccess() else {
+            stopFPSMeter()
+            fpsStatus = "需要屏幕录制权限"
+            fpsTarget = "—"
+            return
+        }
+        let front = NSWorkspace.shared.frontmostApplication?.processIdentifier
+        if let meter = fpsMeter, meter.targetPID == front { return }   // 已在测当前前台程序
+        guard !fpsStarting, Date() >= fpsRetryAt else { return }
+        startFPSMeter()
+    }
+
+    private func startFPSMeter() {
+        let old = fpsMeter
+        fpsMeter = nil
+        fpsSamples = []
+        fpsValue = nil
+        fpsStarting = true
+        fpsGeneration += 1
+        let generation = fpsGeneration
+        let meter = FPSMeter()
+        meter.onSample = { [weak self, weak meter] fps, name in
+            guard let self, let meter, self.fpsMeter === meter else { return }
+            if fps < 0 {   // 窗口关了等：下次刷新重新找前台窗口
+                self.fpsMeter = nil
+                self.fpsValue = nil
+                Task { await meter.stop() }
+                return
+            }
+            self.fpsSamples = Array((self.fpsSamples + [fps]).suffix(3))
+            self.fpsValue = self.fpsSamples.sorted()[self.fpsSamples.count / 2]
+            self.fpsTarget = name
+            self.fpsRefresh = meter.refreshRate
+            self.fpsStatus = "测量中"
+        }
+        Task { [weak self] in
+            await old?.stop()
+            do {
+                try await meter.start(.frontmostWindow)
+                await MainActor.run { [weak self] in
+                    guard let self, self.fpsGeneration == generation else { Task { await meter.stop() }; return }
+                    self.fpsStarting = false
+                    self.fpsMeter = meter
+                    self.fpsTarget = meter.targetName
+                    self.fpsRefresh = meter.refreshRate
+                    self.fpsStatus = "测量中"
+                }
+            } catch {
+                await MainActor.run { [weak self] in
+                    guard let self, self.fpsGeneration == generation else { return }
+                    self.fpsStarting = false
+                    self.fpsValue = nil
+                    self.fpsTarget = NSWorkspace.shared.frontmostApplication?.localizedName ?? "—"
+                    self.fpsStatus = (error as? FPSMeter.MeterError) == .noWindow ? "前台程序没有可测的窗口" : "暂时无法测量"
+                    self.fpsRetryAt = Date().addingTimeInterval(3)   // 3 秒后再试，不每秒反复查询
+                }
+            }
+        }
+    }
+
+    private func stopFPSMeter() {
+        guard fpsMeter != nil || fpsStarting else { return }
+        fpsGeneration += 1
+        fpsStarting = false
+        let meter = fpsMeter
+        fpsMeter = nil
+        fpsSamples = []
+        fpsValue = nil
+        Task { await meter?.stop() }
+    }
+
     @objc private func willSleep() {
         LongHistory.shared.save()
         if !sleeping {
@@ -1298,6 +1395,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         }
         TrafficLedger.shared.save()
         sleeping = true
+        stopFPSMeter()
         floatingPanel?.orderOut(nil)
         cpuLoad.reset()
         previousDisk = nil
@@ -1497,6 +1595,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
                                            ("区间", fan.map { "\(Int($0.minimum))–\(Int($0.maximum))" } ?? "—"),
                                            ("模式", mode)])
         }
+        if wants(.fps) {
+            updateFPSMeter()
+            let text = fpsValue.map(String.init) ?? "—"
+            if let fpsValue { record(.fps, Double(fpsValue)) }
+            setIcon(.fps, key: text, value: fpsValue.map { "\($0) 帧每秒，\(fpsTarget)" } ?? fpsStatus) {
+                StatusIcons.labeled("FPS", value: text, level: .normal, widest: "120")
+            }
+            heroes[.fps] = HeroData(fraction: fpsValue.map { Double($0) / Double(max(fpsRefresh, 1)) }, tone: .accent,
+                                    value: text, unit: "帧 / 秒",
+                                    rows: [("程序", fpsTarget), ("刷新率", "\(fpsRefresh) Hz"), ("状态", fpsStatus)])
+        } else {
+            stopFPSMeter()
+        }
         if shown == .fan || shown == .temperature {
             panel.fan = fan.map { FanData(current: $0.current, minimum: $0.minimum, maximum: $0.maximum) }
             panel.groups = groups
@@ -1547,6 +1658,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         case .power: return String(format: "%.1f W", value)
         case .fan: return "\(Int(value)) 转"
         case .temperature: return "\(Int(Units.temperature(value).rounded()))\(Units.temperatureUnit)"
+        case .fps: return "\(Int(value)) 帧"
         }
     }
 
@@ -1636,6 +1748,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         case .memory: return memorySize
         case .power, .fan: return { String(format: $0 >= 10 ? "%.0f W" : "%.1f W", $0) }
         case .temperature: return { Units.degrees($0) }
+        case .fps: return { "\(Int($0))" }
         }
     }
 
@@ -1706,6 +1819,12 @@ if launchArguments.count >= 2, launchArguments[1] == "--test-alert" {
     app.setActivationPolicy(.accessory)
     AlertCenter.shared.sendTest(device: (name: "BKB02_1", symbol: "keyboard", level: 18))
     DispatchQueue.main.asyncAfter(deadline: .now() + 3) { exit(0) }
+    app.run()
+}
+// 走查：--fps-probe <输出文件> <秒数> [display] 测帧率后退出（见 FPSMeter.swift）
+if launchArguments.count >= 4, launchArguments[1] == "--fps-probe" {
+    app.setActivationPolicy(.accessory)
+    FPSProbe.run(launchArguments)
     app.run()
 }
 if launchArguments.count >= 4, launchArguments[1] == "--render" {

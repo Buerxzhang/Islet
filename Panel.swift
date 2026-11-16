@@ -175,6 +175,7 @@ extension Metric {
         case .power: return "bolt"
         case .fan: return "fan"
         case .temperature: return "thermometer.medium"
+        case .fps: return "gauge.with.needle"
         }
     }
 
@@ -188,6 +189,7 @@ extension Metric {
         case .power: return "功耗"
         case .fan: return "风扇"
         case .temperature: return "温度"
+        case .fps: return "帧率"
         }
     }
 
@@ -201,7 +203,7 @@ extension Metric {
         case .disk: return "磁盘读写"
         case .power: return "应用功耗"
         case .fan: return "发热来源"
-        case .temperature: return nil
+        case .temperature, .fps: return nil
         }
     }
 }
@@ -236,6 +238,8 @@ struct PanelView: View {
                     batteryCard(p)
                     keepAwakeCard(p)
                     rankingCard(p, limit: nil)
+                case .fps:
+                    fpsNoteCard(p)
                 default:
                     rankingCard(p, limit: nil)
                 }
@@ -244,6 +248,24 @@ struct PanelView: View {
             .padding(14)
             .frame(width: 320)
             .background(p.panel)
+        }
+    }
+
+    /// 帧率面板的说明：测的是什么、什么时候数字会低。
+    private func fpsNoteCard(_ p: Palette) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            SectionHeader(title: "说明")
+            Card(padding: 10) {
+                VStack(alignment: .leading, spacing: 6) {
+                    ForEach(["测的是前台窗口每秒画面变化的次数，最高等于屏幕刷新率。",
+                             "画面静止时（暂停、停在菜单）数字会变低，不代表卡顿。",
+                             "需要屏幕录制权限；只数画面变化，不保存、不上传画面。"], id: \.self) { line in
+                        Text(line).font(Typo.caption).foregroundStyle(p.text2)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
         }
     }
 

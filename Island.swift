@@ -171,6 +171,8 @@ final class MetricsIslandView: NSView {
             switch metric {
             case .temperature:
                 return (metric, StatusIcons.labeled("TEMP", value: Units.degrees(52), level: .normal, widest: "108°"))
+            case .fps:
+                return (metric, StatusIcons.labeled("FPS", value: "60", level: .normal, widest: "120"))
             case .network:
                 let down = StatusIcons.RateRow(arrow: "↓", value: Units.networkRate(66_000), active: true)
                 let up = StatusIcons.RateRow(arrow: "↑", value: Units.networkRate(2_200), active: true)

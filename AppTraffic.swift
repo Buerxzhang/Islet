@@ -101,7 +101,7 @@ final class AppIdentityResolver {
 
 /// 菜单栏上每个指标各对应一种排行。
 enum Metric: Int, CaseIterable {
-    case network, cpu, gpu, memory, disk, power, fan, temperature
+    case network, cpu, gpu, memory, disk, power, fan, temperature, fps
 
     var title: String {
         switch self {
@@ -113,6 +113,7 @@ enum Metric: Int, CaseIterable {
         case .power: return "功耗排行"
         case .fan: return "风扇 · 发热来源"
         case .temperature: return "温度"
+        case .fps: return "帧率"
         }
     }
 
@@ -125,6 +126,7 @@ enum Metric: Int, CaseIterable {
         case .disk: return ["读取", "写入"]
         case .power, .fan: return ["功耗"]
         case .temperature: return ["平均", "最高"]
+        case .fps: return []
         }
     }
 
@@ -137,6 +139,7 @@ enum Metric: Int, CaseIterable {
         case .disk: return "当前没有明显的磁盘读写"
         case .power, .fan: return "当前没有明显耗电的应用"
         case .temperature: return "读不到温度传感器"
+        case .fps: return ""
         }
     }
 
@@ -153,6 +156,7 @@ enum Metric: Int, CaseIterable {
         case .power: return "整机功耗"
         case .fan: return "风扇转速"
         case .temperature: return "CPU 温度"
+        case .fps: return "前台窗口帧率"
         }
     }
 
