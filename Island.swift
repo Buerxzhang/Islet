@@ -10,7 +10,7 @@ enum StatusItemNames {
     static let bases = ["network", "fan", "temperature", "power", "disk", "memory", "gpu", "cpu", "spectrum", "island", "bluetooth"]
 
     static func name(_ base: String, generation: Int = generation) -> String {
-        generation == 0 ? "SpeedBar.\(base)" : "SpeedBar.\(base).\(generation)"
+        generation == 0 ? "islet.\(base)" : "islet.\(base).\(generation)"
     }
 
     /// 换下一代名字，并清掉上一代在系统里留下的位置记录。

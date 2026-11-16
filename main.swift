@@ -54,7 +54,7 @@ struct Traffic {
     }
 }
 
-final class SpeedBar: NSObject, NSApplicationDelegate, NSPopoverDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     /// 蓝牙设备图像（画在灵动岛末尾）。
     private var bluetoothImage: NSImage?
     /// 合并显示时的“指标灵动岛”：一个菜单栏项画下所有指标（在各指标项之后创建，排在它们左边）。
@@ -224,7 +224,7 @@ final class SpeedBar: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         }
         return count
     }()
-    private let sampleQueue = DispatchQueue(label: "local.codex.compact-speed-bar.apps")
+    private let sampleQueue = DispatchQueue(label: "local.codex.islet.apps")
     private let appResolver = AppIdentityResolver()  // 仅在 sampleQueue 上使用
     private var shownMetric: Metric?
     private var panelTimer: Timer?
@@ -273,7 +273,7 @@ final class SpeedBar: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         monitor.pathUpdateHandler = { [weak self] _ in
             DispatchQueue.main.async { self?.resetSampling() }
         }
-        monitor.start(queue: DispatchQueue(label: "local.codex.compact-speed-bar.path"))
+        monitor.start(queue: DispatchQueue(label: "local.codex.islet.path"))
         let workspace = NSWorkspace.shared.notificationCenter
         workspace.addObserver(self, selector: #selector(volumesChanged), name: NSWorkspace.didMountNotification, object: nil)
         workspace.addObserver(self, selector: #selector(volumesChanged), name: NSWorkspace.didUnmountNotification, object: nil)
@@ -580,7 +580,7 @@ final class SpeedBar: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         let appItem = NSMenuItem()
         let appMenu = NSMenu()
         appMenu.addItem(withTitle: "关闭窗口", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
-        appMenu.addItem(withTitle: "退出 Islet", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        appMenu.addItem(withTitle: "退出 islet", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         appItem.submenu = appMenu
         menu.addItem(appItem)
         let editItem = NSMenuItem()
@@ -720,18 +720,18 @@ final class SpeedBar: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private func contextMenu() -> NSMenu {
         let menu = NSMenu()
         let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? ""
-        let title = NSMenuItem(title: "Islet \(version)", action: nil, keyEquivalent: "")
+        let title = NSMenuItem(title: "islet \(version)", action: nil, keyEquivalent: "")
         title.isEnabled = false
         menu.addItem(title)
         menu.addItem(.separator())
         let settings = NSMenuItem(title: "设置…", action: #selector(menuOpenSettings), keyEquivalent: ",")
         settings.target = self
         menu.addItem(settings)
-        let about = NSMenuItem(title: "关于 Islet", action: #selector(menuOpenAbout), keyEquivalent: "")
+        let about = NSMenuItem(title: "关于 islet", action: #selector(menuOpenAbout), keyEquivalent: "")
         about.target = self
         menu.addItem(about)
         menu.addItem(.separator())
-        let quit = NSMenuItem(title: "退出 Islet", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        let quit = NSMenuItem(title: "退出 islet", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         menu.addItem(quit)
         return menu
     }
@@ -744,7 +744,7 @@ final class SpeedBar: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         if let expand { settingsModel.expanded.insert(expand) }
         popover.performClose(nil)
         updateControlTemperatures()
-        windows.show("settings", title: "Islet 设置", size: NSSize(width: 960, height: 620), resizable: true) {
+        windows.show("settings", title: "islet 设置", size: NSSize(width: 960, height: 620), resizable: true) {
             SettingsView(model: settingsModel)
         }
     }
@@ -1061,7 +1061,7 @@ final class SpeedBar: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private func ensureFanHelper(title: String) -> Bool {
         let client = FanHelperClient.shared
         guard client.isRunningFromApplications else {
-            showAlert("无法启用风扇调速", "请把 Islet 放在“应用程序”文件夹里运行。")
+            showAlert("无法启用风扇调速", "请把 islet 放在“应用程序”文件夹里运行。")
             return false
         }
         if client.isInstalled && client.isHelperCurrent { return true }
@@ -1511,8 +1511,22 @@ final class SpeedBar: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     }
 }
 
+// 更换应用标识后，首次启动时继承旧版设置。
+let defaults = UserDefaults.standard
+if let domain = Bundle.main.bundleIdentifier, domain == FanControl.clientIdentifier,
+   defaults.persistentDomain(forName: domain)?["didMigratePreferences"] as? Bool != true {
+    let previous = defaults.persistentDomain(forName: "local.codex.compact-speed-bar") ?? [:]
+    var settings = defaults.persistentDomain(forName: domain) ?? [:]
+    for (key, value) in previous {
+        let migratedKey = key.replacingOccurrences(of: "SpeedBar.", with: "islet.")
+        if settings[migratedKey] == nil { settings[migratedKey] = value }
+    }
+    settings["didMigratePreferences"] = true
+    defaults.setPersistentDomain(settings, forName: domain)
+}
+
 let app = NSApplication.shared
-let delegate = SpeedBar()
+let delegate = AppDelegate()
 let launchArguments = CommandLine.arguments
 RenderTargets.runIfRequested(launchArguments)
 // 走查：--test-alert 只发一条示例低电量通知然后退出（和设置里的“发送测试通知”相同），不创建菜单栏图标
@@ -1530,7 +1544,7 @@ app.delegate = delegate
 app.setActivationPolicy(.accessory)
 app.run()
 
-extension SpeedBar: SpectrumHost {
+extension AppDelegate: SpectrumHost {
     var hostButton: NSStatusBarButton? { island.item.button }
     func embed(_ view: SpectrumBarsView?) {
         if view == nil { island.view.audio = nil }

@@ -18,7 +18,7 @@ enum Units {
 
     /// 网速：字节时 1.2MB，比特时 9.6Mb。
     static func networkRate(_ bytesPerSecond: Double) -> String {
-        guard bits else { return SpeedBar.compactRate(bytesPerSecond) }
+        guard bits else { return AppDelegate.compactRate(bytesPerSecond) }
         let value = bytesPerSecond * 8
         switch value {
         case 99_950_000...: return String(format: "%.0fMb", value / 1_000_000)
@@ -147,7 +147,7 @@ final class AlertCenter: NSObject, UNUserNotificationCenterDelegate {
         center.requestAuthorization(options: [.alert, .sound]) { granted, _ in
             guard granted else { return }
             let content = UNMutableNotificationContent()
-            content.title = "Islet \(release.version) 已发布"
+            content.title = "islet \(release.version) 已发布"
             content.body = "当前是 \(UpdateChecker.currentVersion)，点这里查看更新内容并下载。"
             content.userInfo = ["url": release.url.absoluteString]
             center.add(UNNotificationRequest(identifier: "update-\(release.version)", content: content, trigger: nil))
@@ -240,7 +240,7 @@ enum SettingsTransfer {
               let values = UserDefaults.standard.persistentDomain(forName: domain) else { return }
         let filtered = values.filter { !$0.key.hasPrefix("NSStatusItem") && !$0.key.hasPrefix("NSWindow Frame") }
         let panel = NSSavePanel()
-        panel.nameFieldStringValue = "Islet 设置.plist"
+        panel.nameFieldStringValue = "islet 设置.plist"
         panel.allowedContentTypes = [.propertyList]
         NSApp.activate()
         guard panel.runModal() == .OK, let url = panel.url,
@@ -286,11 +286,13 @@ final class LongHistory {
 
     private static var fileURL: URL {
         let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-        let folder = support.appendingPathComponent("Islet", isDirectory: true)
-        // 改名前的数据目录：搬过来
-        let old = support.appendingPathComponent("系统监控", isDirectory: true)
-        if FileManager.default.fileExists(atPath: old.path), !FileManager.default.fileExists(atPath: folder.path) {
-            try? FileManager.default.moveItem(at: old, to: folder)
+        let folder = support.appendingPathComponent("islet", isDirectory: true)
+        // 保留区分大小写的磁盘上旧版存下的历史数据。
+        if !FileManager.default.fileExists(atPath: folder.path) {
+            for name in ["Islet", "系统监控"] {
+                let old = support.appendingPathComponent(name, isDirectory: true)
+                if (try? FileManager.default.moveItem(at: old, to: folder)) != nil { break }
+            }
         }
         try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         return folder.appendingPathComponent("history.json")
@@ -522,7 +524,7 @@ enum UpdateChecker {
 
     /// 查询最新版本：成功时回调最新的 Release（可能不比当前新），失败时回调 nil。
     static func fetchLatest(_ completion: @escaping (Release?) -> Void) {
-        var request = URLRequest(url: URL(string: "https://api.github.com/repos/Buerxzhang/Islet/releases/latest")!)
+        var request = URLRequest(url: URL(string: "https://api.github.com/repos/Buerxzhang/islet/releases/latest")!)
         request.timeoutInterval = 8
         request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
         URLSession.shared.dataTask(with: request) { data, response, _ in
@@ -563,13 +565,13 @@ enum UpdateChecker {
 }
 
 enum AppInfo {
-    static let name = "Islet"
+    static let name = "islet"
     static let summary = "菜单栏里的灵动岛"
     static let author = "Buerxzhang"
     static let authorURL = URL(string: "https://github.com/Buerxzhang")!
-    static let homepage = URL(string: "https://github.com/Buerxzhang/Islet")!
+    static let homepage = URL(string: "https://github.com/Buerxzhang/islet")!
     /// 新建问题页（诊断报告先复制到剪贴板，不放进网址）。
-    static let issuesURL = URL(string: "https://github.com/Buerxzhang/Islet/issues/new")!
+    static let issuesURL = URL(string: "https://github.com/Buerxzhang/islet/issues/new")!
     static var version: String {
         let info = Bundle.main.infoDictionary
         return "\(info?["CFBundleShortVersionString"] as? String ?? "—")（\(info?["CFBundleVersion"] as? String ?? "—")）"
@@ -577,7 +579,7 @@ enum AppInfo {
 
     /// GitHub 标星数：打开关于页时查一次（公开接口，不需要登录），失败时不显示数字。
     static func fetchStars(_ completion: @escaping (Int?) -> Void) {
-        var request = URLRequest(url: URL(string: "https://api.github.com/repos/Buerxzhang/Islet")!)
+        var request = URLRequest(url: URL(string: "https://api.github.com/repos/Buerxzhang/islet")!)
         request.timeoutInterval = 6
         request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
         URLSession.shared.dataTask(with: request) { data, response, _ in

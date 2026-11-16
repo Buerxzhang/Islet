@@ -100,11 +100,12 @@ enum AudioSystem {
             guard get(id, kAudioObjectPropertyName, kAudioObjectPropertyScopeGlobal, &name), let name else { return nil }
             var transport: UInt32 = 0
             _ = get(id, kAudioDevicePropertyTransportType, kAudioObjectPropertyScopeGlobal, &transport)
-            if transport == kAudioDeviceTransportTypeAggregate, (name.takeUnretainedValue() as String).hasPrefix("Islet") || (name.takeUnretainedValue() as String).hasPrefix("系统监控") {
-                _ = name.takeRetainedValue()
+            let deviceName = name.takeRetainedValue() as String
+            if transport == kAudioDeviceTransportTypeAggregate,
+               deviceName.lowercased().hasPrefix("islet") || deviceName.hasPrefix("系统监控") {
                 return nil
             }
-            return AudioOutput(id: id, name: name.takeRetainedValue() as String, transport: transport, volume: volume(of: id))
+            return AudioOutput(id: id, name: deviceName, transport: transport, volume: volume(of: id))
         }
         // 内置扬声器排第一，其余按名称
         .sorted { ($0.transport == kAudioDeviceTransportTypeBuiltIn ? 0 : 1, $0.name) < ($1.transport == kAudioDeviceTransportTypeBuiltIn ? 0 : 1, $1.name) }
@@ -252,7 +253,7 @@ final class BLEBattery: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate
     private static let service = CBUUID(string: "180F")
     private static let level = CBUUID(string: "2A19")
 
-    private let queue = DispatchQueue(label: "local.codex.compact-speed-bar.ble-battery")
+    private let queue = DispatchQueue(label: "local.codex.islet.ble-battery")
     private var manager: CBCentralManager?
     private var peripherals: [UUID: CBPeripheral] = [:]
     private let lock = NSLock()
@@ -645,7 +646,7 @@ final class SoundController: NSObject, NSPopoverDelegate {
     private var embedders = 0   // 正在显示声音控件的面板数（音乐频谱面板、蓝牙面板）
     private var refreshTimer: Timer?
     private var watchedDevice: AudioDeviceID = 0
-    private let bluetoothQueue = DispatchQueue(label: "local.codex.compact-speed-bar.bluetooth")
+    private let bluetoothQueue = DispatchQueue(label: "local.codex.islet.bluetooth")
 
     // MARK: 菜单栏蓝牙
 

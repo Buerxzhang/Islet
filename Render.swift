@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 
 /// 离屏渲染（设计走查）：--render island / spectrumbar <输出.png>，画完直接退出。
-/// 其余目标（面板、设置页等）由 SpeedBar.runRender 处理。
+/// 其余目标（面板、设置页等）由 AppDelegate.runRender 处理。
 enum RenderTargets {
     static func runIfRequested(_ launchArguments: [String]) {
         guard launchArguments.count >= 4, launchArguments[1] == "--render" else { return }

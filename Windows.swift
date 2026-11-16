@@ -36,7 +36,7 @@ final class WindowManager {
         window.collectionBehavior = [.moveToActiveSpace, .fullScreenAuxiliary]
         window.hidesOnDeactivate = false
         // 记住窗口位置：第一次居中，之后在上次拖到的地方打开
-        if window.setFrameUsingName("SpeedBar.\(id)") {
+        if window.setFrameUsingName("islet.\(id)") {
             if window.frame.width < size.width {
                 var frame = window.frame
                 frame.size.width = size.width
@@ -45,7 +45,7 @@ final class WindowManager {
         } else {
             window.center()
         }
-        window.setFrameAutosaveName("SpeedBar.\(id)")
+        window.setFrameAutosaveName("islet.\(id)")
         NotificationCenter.default.addObserver(forName: NSWindow.willCloseNotification, object: window, queue: .main) { [weak self] _ in
             DispatchQueue.main.async { self?.updateDockIcon() }
         }
@@ -396,7 +396,7 @@ struct SettingsView: View {
         .frame(maxWidth: .infinity)
         section(p, "位置") {
             row(p, "始终在菜单栏最左侧", "关闭后可按住 ⌘ 拖到任意位置", icon: "pin.fill", tint: Color(hex: 0x30D158)) {
-                Toggle2(isOn: SpeedBar.keepsLeftmost) { on in
+                Toggle2(isOn: AppDelegate.keepsLeftmost) { on in
                     UserDefaults.standard.set(on, forKey: "keepLeftmost")
                     if on { model.onKeepLeftmost() }
                     model.refresh()
@@ -823,7 +823,7 @@ struct SettingsView: View {
         switch model.update {
         case .checking: return "正在查询 GitHub…"
         case .failed: return "检查失败，请检查网络后再试"
-        case .available: return "当前是 \(UpdateChecker.currentVersion)，下载后替换「应用程序」里的 Islet"
+        case .available: return "当前是 \(UpdateChecker.currentVersion)，下载后替换「应用程序」里的 islet"
         case .latest: return "当前版本 \(UpdateChecker.currentVersion)"
         case .idle: return "从 GitHub 查询是否有新版本"
         }
@@ -844,7 +844,7 @@ struct SettingsView: View {
         }
         .padding(.bottom, 4)
         section(p, "项目") {
-            row(p, "\(AppInfo.author) / Islet", "GitHub 开源项目", icon: "chevron.left.forwardslash.chevron.right", tint: Color(hex: 0x1C1C1E)) {
+            row(p, "\(AppInfo.author) / islet", "GitHub 开源项目", icon: "chevron.left.forwardslash.chevron.right", tint: Color(hex: 0x1C1C1E)) {
                 HStack(spacing: 8) {
                     PlainButton(title: "主页") { NSWorkspace.shared.open(AppInfo.homepage) }
                     PlainButton(title: model.stars.map { "⭐ Star · \($0)" } ?? "⭐ Star") { NSWorkspace.shared.open(AppInfo.homepage) }
@@ -858,7 +858,7 @@ struct SettingsView: View {
             if model.showDonate {
                 divider(p)
                 VStack(spacing: 8) {
-                    Text("如果 Islet 对你有帮助，可以请作者喝杯咖啡").font(Typo.caption).foregroundStyle(p.text3)
+                    Text("如果 islet 对你有帮助，可以请作者喝杯咖啡").font(Typo.caption).foregroundStyle(p.text3)
                     HStack(spacing: 16) {
                         donateCode(p, "alipay", "支付宝")
                         donateCode(p, "wechat", "微信")

@@ -4,12 +4,12 @@ import Foundation
 /// 设计参考 FunFan（MIT）：四种策略（自动 / 固定 / 曲线 / 规则）+ 降温滞后 + 斜率限制 + 动态安全下限 + 租约看门狗。
 enum FanControl {
     /// 辅助程序的 launchd 标签与 XPC 服务名。
-    static let label = "local.codex.compact-speed-bar.fanhelper"
+    static let label = "local.codex.islet.fanhelper"
     /// 协议版本：不一致时提示重新安装组件。
     static let version = 2
     /// 只接受这个程序的连接（另有代码签名标识校验）。
-    static let clientPath = "/Applications/Islet.app/Contents/MacOS/SpeedBar"
-    static let clientIdentifier = "local.codex.compact-speed-bar"
+    static let clientPath = "/Applications/islet.app/Contents/MacOS/islet"
+    static let clientIdentifier = "local.codex.islet"
     static let helperPath = "/Library/PrivilegedHelperTools/\(label)"
     static let plistPath = "/Library/LaunchDaemons/\(label).plist"
     /// 租约：菜单栏程序每 5 秒续一次，15 秒没续约辅助程序就把风扇交还系统。

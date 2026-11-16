@@ -2,11 +2,11 @@ import Foundation
 import IOKit
 import IOKit.pwr_mgt
 
-// 系统监控的风扇控制辅助程序：以 root 运行（launchd 守护进程），只做一件事——
+// islet 的风扇控制辅助程序：以 root 运行（launchd 守护进程），只做一件事——
 // 按菜单栏程序下发的配置（自动 / 固定 / 曲线 / 规则）调速，并在任何异常时把风扇交还系统。
 //
 // 安全边界：
-// - 只接受 /Applications/系统监控.app 的连接（另按代码签名标识校验）；
+// - 只接受 /Applications/islet.app 的连接（另按代码签名标识校验）；
 // - 配置在这里重新校验和截断；温度、曲线、规则、安全下限都在这里计算，
 //   转速始终在系统最低～最高之间、不低于按温度计算的安全下限，绝不为 0——
 //   即使有程序冒充菜单栏程序，最坏也只能让风扇更吵，不能让它更慢；
@@ -240,11 +240,11 @@ final class ListenerDelegate: NSObject, NSXPCListenerDelegate {
     }
 
     func listener(_ listener: NSXPCListener, shouldAcceptNewConnection connection: NSXPCConnection) -> Bool {
-        // 只接受安装在“应用程序”里的系统监控；系统还会按代码签名标识校验每条消息的发送方
+        // 只接受安装在“应用程序”里的 islet；系统还会按代码签名标识校验每条消息的发送方
         var buffer = [CChar](repeating: 0, count: Int(4 * MAXPATHLEN))
         guard proc_pidpath(connection.processIdentifier, &buffer, UInt32(buffer.count)) > 0,
               String(cString: buffer) == FanControl.clientPath else {
-            NSLog("拒绝连接：进程 %d 不是 Islet", connection.processIdentifier)
+            NSLog("拒绝连接：进程 %d 不是 islet", connection.processIdentifier)
             return false
         }
         connection.setCodeSigningRequirement("identifier \"\(FanControl.clientIdentifier)\"")

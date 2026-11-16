@@ -127,7 +127,7 @@ final class KeepAwake: ObservableObject {
         // 系统睡眠断言：PreventUserIdleSystemSleep；屏幕常亮：PreventUserIdleDisplaySleep
         let type = (keepDisplayOn ? "PreventUserIdleDisplaySleep" : "PreventUserIdleSystemSleep") as CFString
         IOPMAssertionCreateWithName(type, IOPMAssertionLevel(kIOPMAssertionLevelOn),
-                                    "Islet：保持唤醒" as CFString, &assertion)
+                                    "islet：保持唤醒" as CFString, &assertion)
     }
 }
 

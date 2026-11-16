@@ -37,7 +37,7 @@ final class FanHelperClient: ObservableObject {
     /// 已安装的辅助程序是否与本程序内置的一致（程序更新后需要重新安装组件）。
     var isHelperCurrent: Bool {
         FileManager.default.contentsEqual(atPath: FanControl.helperPath,
-                                          andPath: Bundle.main.bundlePath + "/Contents/Library/FanHelper/SpeedBarFanHelper")
+                                          andPath: Bundle.main.bundlePath + "/Contents/Library/FanHelper/isletFanHelper")
     }
 
     /// 只有安装在“应用程序”里的副本才会被辅助程序接受。
@@ -140,7 +140,7 @@ final class FanHelperClient: ObservableObject {
     private func send(_ override: FanConfig? = nil, completion: @escaping (String?) -> Void) {
         let payload = override ?? config
         guard payload.strategy == .auto || isRunningFromApplications else {
-            completion("请把 Islet 放在“应用程序”文件夹里运行，风扇控制组件只接受那里的副本。")
+            completion("请把 islet 放在“应用程序”文件夹里运行，风扇控制组件只接受那里的副本。")
             return
         }
         guard isInstalled else {
@@ -193,17 +193,22 @@ final class FanHelperClient: ObservableObject {
     func install() -> String? {
         let source = Bundle.main.bundlePath + "/Contents/Library/FanHelper"
         let label = FanControl.label
+        let previousLabel = "local.codex.compact-speed-bar.fanhelper"
         let script = """
         set -e
         launchctl bootout system/\(label) 2>/dev/null || true
         mkdir -p /Library/PrivilegedHelperTools
-        install -o root -g wheel -m 755 '\(source)/SpeedBarFanHelper' '\(FanControl.helperPath)'
+        install -o root -g wheel -m 755 '\(source)/isletFanHelper' '\(FanControl.helperPath)'
         install -o root -g wheel -m 644 '\(source)/\(label).plist' '\(FanControl.plistPath)'
+        if launchctl print system/\(previousLabel) >/dev/null 2>&1; then
+            launchctl bootout system/\(previousLabel)
+        fi
         launchctl bootstrap system '\(FanControl.plistPath)' || { sleep 1; launchctl bootstrap system '\(FanControl.plistPath)'; }
+        rm -f '/Library/PrivilegedHelperTools/\(previousLabel)' '/Library/LaunchDaemons/\(previousLabel).plist'
         """
         connection?.invalidate()
         connection = nil
-        let error = runAsAdministrator(script, prompt: "Islet 要安装风扇控制组件，用于按温度调节风扇转速。")
+        let error = runAsAdministrator(script, prompt: "islet 要安装风扇控制组件，用于按温度调节风扇转速。")
         objectWillChange.send()
         return error
     }
@@ -220,7 +225,7 @@ final class FanHelperClient: ObservableObject {
         """
         connection?.invalidate()
         connection = nil
-        let error = runAsAdministrator(script, prompt: "Islet 要卸载风扇控制组件。")
+        let error = runAsAdministrator(script, prompt: "islet 要卸载风扇控制组件。")
         status = nil
         objectWillChange.send()
         return error

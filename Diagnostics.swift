@@ -26,7 +26,7 @@ enum Diagnostics {
         let fans = Fan.readAll()
         let client = FanHelperClient.shared
         var lines: [String] = []
-        lines.append("## Islet 诊断报告")
+        lines.append("## islet 诊断报告")
         lines.append("")
         lines.append("| 项目 | 值 |")
         lines.append("|---|---|")

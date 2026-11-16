@@ -3,14 +3,14 @@
 <plist version="1.0">
 <dict>
 	<key>Label</key>
-	<string>local.codex.compact-speed-bar.fanhelper</string>
+	<string>local.codex.islet.fanhelper</string>
 	<key>ProgramArguments</key>
 	<array>
-		<string>/Library/PrivilegedHelperTools/local.codex.compact-speed-bar.fanhelper</string>
+		<string>/Library/PrivilegedHelperTools/local.codex.islet.fanhelper</string>
 	</array>
 	<key>MachServices</key>
 	<dict>
-		<key>local.codex.compact-speed-bar.fanhelper</key>
+		<key>local.codex.islet.fanhelper</key>
 		<true/>
 	</dict>
 	<!-- 常驻：启动时先把风扇交还系统，异常退出后 launchd 会重新拉起它再清理一次 -->

@@ -23,7 +23,7 @@ final class SpectrumAnalyzer {
 
     /// 实时音频线程写入、主线程读取的最近 fftSize 个采样（单声道）。
     private let samples = OSAllocatedUnfairLock(initialState: [Float](repeating: 0, count: SpectrumAnalyzer.fftSize))
-    private let ioQueue = DispatchQueue(label: "local.codex.compact-speed-bar.spectrum", qos: .userInteractive)
+    private let ioQueue = DispatchQueue(label: "local.codex.islet.spectrum", qos: .userInteractive)
     private var tapID = AudioObjectID(kAudioObjectUnknown)
     private var aggregateID = AudioObjectID(kAudioObjectUnknown)
     private var procID: AudioDeviceIOProcID?
@@ -73,7 +73,7 @@ final class SpectrumAnalyzer {
         description.uuid = UUID()
         description.isPrivate = true
         description.muteBehavior = .unmuted
-        description.name = "Islet · 频谱"
+        description.name = "islet · 频谱"
         var tap = AudioObjectID(kAudioObjectUnknown)
         try check(AudioHardwareCreateProcessTap(description, &tap))
         tapID = tap
@@ -91,7 +91,7 @@ final class SpectrumAnalyzer {
         // 3. 以系统输出设备为时钟，建一个只含这个截取的私有聚合设备
         let outputUID = try Self.defaultOutputUID()
         let aggregate: [String: Any] = [
-            kAudioAggregateDeviceNameKey: "Islet 频谱",
+            kAudioAggregateDeviceNameKey: "islet 频谱",
             kAudioAggregateDeviceUIDKey: UUID().uuidString,
             kAudioAggregateDeviceMainSubDeviceKey: outputUID,
             kAudioAggregateDeviceIsPrivateKey: true,
@@ -914,7 +914,7 @@ final class SpectrumController: NSObject, NSPopoverDelegate {
         let title = info.title.isEmpty ? "" : " · \(info.title)"
         return "\(info.playing ? "正在播放" : "已暂停") \(app)\(title)"
     }
-    private let sourceQueue = DispatchQueue(label: "local.codex.compact-speed-bar.spectrum.source")
+    private let sourceQueue = DispatchQueue(label: "local.codex.islet.spectrum.source")
 
     /// 有声音时每半秒查一次“谁真的在发声”（CoreAudio 的进程输出），以它为准：
     /// - 正在播放的应用确实在出声（或查不到别人）→ 显示它的封面和按钮；
@@ -1035,7 +1035,7 @@ final class SpectrumController: NSObject, NSPopoverDelegate {
 
     /// 在后台线程启动截取：首次会弹出“系统录音”权限请求，系统在用户点选之前不会返回，
     /// 放在主线程会让整个程序（包括菜单栏指标）卡住。
-    private let startQueue = DispatchQueue(label: "local.codex.compact-speed-bar.spectrum.start")
+    private let startQueue = DispatchQueue(label: "local.codex.islet.spectrum.start")
     private func startCapture() {
         let analyzer = self.analyzer
         startQueue.async { [weak self] in

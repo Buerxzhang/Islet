@@ -1,23 +1,23 @@
 <p align="center">
-  <img src="docs/icon.png" width="128" alt="Islet">
+  <img src="docs/icon.png" width="128" alt="islet">
 </p>
 
-<h1 align="center">Islet</h1>
+<h1 align="center">islet</h1>
 
 <p align="center">菜单栏里的灵动岛：系统指标、音乐频谱、蓝牙电量，一眼看全。</p>
 
 <p align="center">
   <img alt="macOS" src="https://img.shields.io/badge/macOS-14%2B-black">
   <img alt="Apple Silicon & Intel" src="https://img.shields.io/badge/Apple%20Silicon%20%26%20Intel-universal-blue">
-  <a href="https://github.com/Buerxzhang/Islet/releases"><img alt="Release" src="https://img.shields.io/github/v/release/Buerxzhang/Islet"></a>
-  <a href="https://github.com/Buerxzhang/Islet/stargazers"><img alt="Stars" src="https://img.shields.io/github/stars/Buerxzhang/Islet?style=social"></a>
+  <a href="https://github.com/Buerxzhang/islet/releases"><img alt="Release" src="https://img.shields.io/github/v/release/Buerxzhang/islet"></a>
+  <a href="https://github.com/Buerxzhang/islet/stargazers"><img alt="Stars" src="https://img.shields.io/github/stars/Buerxzhang/islet?style=social"></a>
 </p>
 
 <p align="center">
-  <img src="docs/screenshots/hero.png" width="860" alt="菜单栏里的 Islet，下面是点开后的音乐和网速面板">
+  <img src="docs/screenshots/hero.png" width="860" alt="菜单栏里的 islet，下面是点开后的音乐和网速面板">
 </p>
 
-Islet 是一个 macOS 菜单栏工具。它把 CPU、内存、网速这些常看的数字，和正在播放的音乐、蓝牙设备的电量，收进菜单栏里的一枚胶囊。平时它只是一排指标；电脑里有声音时，胶囊向左展开出封面和频谱；点开任意一项，是更详细的面板。
+islet 是一个 macOS 菜单栏工具。它把 CPU、内存、网速这些常看的数字，和正在播放的音乐、蓝牙设备的电量，收进菜单栏里的一枚胶囊。平时它只是一排指标；电脑里有声音时，胶囊向左展开出封面和频谱；点开任意一项，是更详细的面板。
 
 ## 灵动岛
 
@@ -25,7 +25,7 @@ Islet 是一个 macOS 菜单栏工具。它把 CPU、内存、网速这些常看
 
 ### 刘海屏 MacBook
 
-菜单栏中间被刘海占掉一块，Islet 第一次运行时只打开 CPU、内存、温度、网速，其余的可以在设置里再打开。
+菜单栏中间被刘海占掉一块，islet 第一次运行时只打开 CPU、内存、温度、网速，其余的可以在设置里再打开。
 
 <table>
   <tr>
@@ -141,7 +141,7 @@ Islet 是一个 macOS 菜单栏工具。它把 CPU、内存、网速这些常看
   <img src="docs/screenshots/fan-curve.png" width="640" alt="温度曲线编辑器：拖动控制点设定不同温度下的转速">
 </p>
 
-macOS 自带的风扇策略比较保守，往往等温度上去了，风扇才慢慢跟上。Islet 提供三种调速方式：
+macOS 自带的风扇策略比较保守，往往等温度上去了，风扇才慢慢跟上。islet 提供三种调速方式：
 
 - 固定：一直保持某个转速。
 - 温度曲线：拖动控制点，设定不同温度对应的转速。内置静音、均衡、性能三套预设，可以在预设基础上微调。
@@ -155,7 +155,7 @@ macOS 自带的风扇策略比较保守，往往等温度上去了，风扇才�
   <img src="docs/screenshots/bluetooth.png" width="300" alt="蓝牙面板：已连接设备的电量圆环和其他设备">
 </p>
 
-面板里列出已配对的设备，点一下就能连接或断开。索尼耳机这类系统读不到电量的设备，Islet 也能读出来。
+面板里列出已配对的设备，点一下就能连接或断开。索尼耳机这类系统读不到电量的设备，islet 也能读出来。
 
 电量低于设定值时会发一条通知，标题写明是什么设备，右边附上电量圆环：
 
@@ -174,8 +174,8 @@ macOS 自带的风扇策略比较保守，往往等温度上去了，风扇才�
 
 ## 安装
 
-1. 到 [Releases](https://github.com/Buerxzhang/Islet/releases) 下载最新的 `Islet.zip`，解压后把 **Islet.app** 拖进「应用程序」文件夹。
-2. 第一次打开时，macOS 可能会提示「无法验证开发者」。在「应用程序」里**右键 Islet → 打开**，或者到「系统设置 → 隐私与安全性」点「仍要打开」。
+1. 到 [Releases](https://github.com/Buerxzhang/islet/releases) 下载最新的 `islet.zip`，解压后把 **islet.app** 拖进「应用程序」文件夹。
+2. 第一次打开时，macOS 可能会提示「无法验证开发者」。在「应用程序」里**右键 islet → 打开**，或者到「系统设置 → 隐私与安全性」点「仍要打开」。
 3. 按提示授予权限：
 
 | 权限 | 用来做什么 |
@@ -185,20 +185,22 @@ macOS 自带的风扇策略比较保守，往往等温度上去了，风扇才�
 | 通知 | 提醒规则和低电量提醒 |
 | 管理员密码（可选） | 安装风扇调速组件 |
 
-> 风扇调速要求 Islet 放在「应用程序」文件夹里。
+> 从旧版升级时，先退出旧应用并把它移出「应用程序」，再放入新版。设置和历史会沿用，macOS 可能要求重新授权。
+>
+> 风扇调速要求 islet 放在「应用程序」文件夹里。旧版用户需在设置里重新安装风扇组件，安装时会移除旧组件。
 
 ## 从源码构建
 
 需要 Xcode 命令行工具（`xcode-select --install`）。
 
 ```bash
-./build.sh            # 构建到 build/Islet.app
+./build.sh            # 构建到 build/islet.app
 ./build.sh install    # 构建并安装到 /Applications，然后启动
 ```
 
 ## 隐私
 
-Islet 不收集、不上传任何使用数据。只有这几种情况会联网：查询公网 IP（ipify）、测量延迟（连接公共 DNS）、打开「关于」页时查询 GitHub 标星数、检查更新时查询 GitHub 上的最新版本（可以在「关于」页关掉自动检查）。
+islet 不收集、不上传任何使用数据。只有这几种情况会联网：查询公网 IP（ipify）、测量延迟（连接公共 DNS）、打开「关于」页时查询 GitHub 标星数、检查更新时查询 GitHub 上的最新版本（可以在「关于」页关掉自动检查）。
 
 ## 已知限制
 
@@ -209,7 +211,7 @@ Islet 不收集、不上传任何使用数据。只有这几种情况会联网�
 
 ## 支持作者
 
-如果 Islet 对你有用，欢迎点个 ⭐️，也可以请作者喝杯咖啡 ☕️
+如果 islet 对你有用，欢迎点个 ⭐️，也可以请作者喝杯咖啡 ☕️
 
 <p align="center">
   <img src="docs/donate/alipay.jpg" width="240" alt="支付宝">
