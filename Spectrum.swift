@@ -484,6 +484,33 @@ final class SpectrumBarsView: NSView {
         }
     }
 
+    /// 离屏渲染（README 截图）：layer.render(in:) 画圆形裁切的封面会错位，
+    /// 所以先隐藏封面图层渲染其余部分，再按封面图层的位置手动画出封面和描边。
+    func renderSnapshot(in context: CGContext) {
+        let showsArtwork = !artworkLayer.isHidden
+        artworkLayer.isHidden = true
+        layer?.render(in: context)
+        artworkLayer.isHidden = !showsArtwork
+        guard showsArtwork, let content = artworkLayer.contents else { return }
+        let image = content as! CGImage
+        let rect = CGRect(x: artworkLayer.position.x - artworkLayer.bounds.width / 2, y: artworkLayer.position.y - artworkLayer.bounds.height / 2,
+                          width: artworkLayer.bounds.width, height: artworkLayer.bounds.height)
+        let radius = artworkLayer.cornerRadius
+        let path = CGPath(roundedRect: rect, cornerWidth: radius, cornerHeight: radius, transform: nil)
+        context.saveGState()
+        context.addPath(path)
+        context.clip()
+        context.draw(image, in: rect)
+        context.restoreGState()
+        context.saveGState()
+        let inner = rect.insetBy(dx: 0.5, dy: 0.5)
+        context.addPath(CGPath(roundedRect: inner, cornerWidth: max(radius - 0.5, 0), cornerHeight: max(radius - 0.5, 0), transform: nil))
+        context.setStrokeColor(artworkLayer.borderColor ?? NSColor.white.withAlphaComponent(0.45).cgColor)
+        context.setLineWidth(artworkLayer.borderWidth)
+        context.strokePath()
+        context.restoreGState()
+    }
+
     func refresh() {
         update(lastLevels ?? [Float](repeating: 0, count: SpectrumAnalyzer.bandCount), audible: lastAudible)
     }

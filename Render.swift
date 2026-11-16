@@ -52,6 +52,7 @@ enum RenderTargets {
     expanded.audio = (bars, bars.preferredWidth)
     let tint = bars.tint!
     expanded.backdrop = SpectrumLook(backdrop: .gradient).backdropColors(tint: tint)
+    expanded.frame = NSRect(x: 0, y: 0, width: 10, height: rowHeight)
     let width = expanded.preferredWidth + 20
     let rows: CGFloat = 3
     let bitmap = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: Int(width * scale), pixelsHigh: Int(rowHeight * rows * scale),
@@ -70,7 +71,8 @@ enum RenderTargets {
         NSAppearance(named: .darkAqua)!.performAsCurrentDrawingAppearance { view.draw(view.bounds) }
         NSGraphicsContext.current?.cgContext.restoreGState()
     }
-    expanded.frame = NSRect(x: 0, y: 0, width: expanded.preferredWidth, height: rowHeight)
+    expanded.frame = NSRect(x: 0, y: 0, width: 10, height: rowHeight)   // 先定高度再取宽度
+    expanded.frame.size.width = expanded.preferredWidth
     expanded.layout()
     bars.update(levels, audible: true)
     if let context = NSGraphicsContext.current?.cgContext {
@@ -79,7 +81,7 @@ enum RenderTargets {
         NSAppearance(named: .darkAqua)!.performAsCurrentDrawingAppearance { expanded.draw(expanded.bounds) }
         let origin = bars.convert(NSPoint.zero, to: expanded)   // 频谱在裁切容器里，换算到岛的坐标
         context.translateBy(x: origin.x, y: origin.y)
-        bars.layer?.render(in: context)
+        bars.renderSnapshot(in: context)
         context.restoreGState()
     }
     NSGraphicsContext.restoreGraphicsState()
@@ -138,16 +140,21 @@ enum RenderTargets {
         let all = MetricsIslandView.demoSegments()
         let compact = all.filter { [.cpu, .memory, .temperature, .network].contains($0.metric) }   // 刘海屏机型默认
         let rings = StatusIcons.bluetooth([(symbol: "keyboard", battery: 64), (symbol: "computermouse", battery: 15), (symbol: "headphones", battery: 80)])
-        let states: [(name: String, segments: [(metric: Metric, image: NSImage)], audio: Audio?, trailing: NSImage?, notch: Bool)] = [
-            ("metrics", all, nil, rings, false),
-            ("no-bluetooth", all, nil, nil, false),
-            ("notch", compact, nil, rings, true),
-            ("music", all, .music, rings, false),
-            ("paused", all, .paused, rings, false),
-            ("video", all, .video, rings, false),
-            ("other", all, .other, rings, false),
-            ("music-only", [], .music, nil, false),
-        ]
+        // 两组：刘海屏（默认只留常用指标，左边画刘海）与非刘海屏（全部指标）
+        var states: [(name: String, segments: [(metric: Metric, image: NSImage)], audio: Audio?, trailing: NSImage?, notch: Bool)] = []
+        for notch in [true, false] {
+            let prefix = notch ? "notch" : "desktop"
+            let segments = notch ? compact : all
+            states += [
+                ("\(prefix)-metrics", segments, nil, rings, notch),
+                ("\(prefix)-no-bluetooth", segments, nil, nil, notch),
+                ("\(prefix)-music", segments, .music, rings, notch),
+                ("\(prefix)-paused", segments, .paused, rings, notch),
+                ("\(prefix)-video", segments, .video, rings, notch),
+                ("\(prefix)-other", segments, .other, rings, notch),
+                ("\(prefix)-music-only", [], .music, nil, notch),
+            ]
+        }
         for state in states {
             let view = MetricsIslandView(frame: .zero)
             view.segments = state.segments
@@ -160,7 +167,9 @@ enum RenderTargets {
                 view.audioLeadsWithCircle = b.leadsWithCircle
                 view.backdrop = SpectrumLook(backdrop: .gradient).backdropColors(tint: b.effectiveTint)
             }
-            view.frame = NSRect(x: 0, y: 0, width: view.preferredWidth, height: rowHeight)
+            // 先定高度再取宽度：两端圆形的留白按高度计算，高度为 0 时宽度会少算
+            view.frame = NSRect(x: 0, y: 0, width: 10, height: rowHeight)
+            view.frame.size.width = view.preferredWidth
             view.layout()
             let notchWidth: CGFloat = state.notch ? 190 : 0
             let width = view.preferredWidth + margin * 2 + notchWidth
@@ -185,7 +194,7 @@ enum RenderTargets {
                 if let bars {
                     let origin = bars.convert(NSPoint.zero, to: view)
                     context.translateBy(x: origin.x, y: origin.y)
-                    bars.layer?.render(in: context)
+                    bars.renderSnapshot(in: context)
                 }
                 context.restoreGState()
             }
