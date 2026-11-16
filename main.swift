@@ -536,12 +536,19 @@ final class SpeedBar: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             if CommandLine.arguments.contains("visualizer") {
                 // 全屏频谱：演示电平
                 let visual = VisualizerModel()
-                for _ in 0..<12 { visual.bars.push(model.levels, audible: true) }
+                // 演示电平：低频鼓点、中频人声、高频逐渐回落（不是只有左边一个峰）
+                let demoLevels: [Float] = (0..<SpectrumAnalyzer.bandCount).map { i in
+                    let d = Double(i)
+                    let shape = 0.18 + 0.62 * exp(-pow(d - 3, 2) / 10) + 0.42 * exp(-pow(d - 11, 2) / 14)
+                        + 0.26 * exp(-pow(d - 18, 2) / 9) + 0.08 * sin(d * 2.3)
+                    return Float(min(max(shape, 0.12), 0.95))
+                }
+                for _ in 0..<12 { visual.bars.push(demoLevels, audible: true) }
                 visual.demo = true
                 visual.info = model.nowPlaying
                 visual.audible = true
                 visual.controlsVisible = true
-                visual.screenNames = ["内建显示器", "LG ULTRAWIDE"]
+                visual.screenNames = []   // 只有一块屏时不显示切换菜单（离屏渲染画不出菜单）
                 let wide = CommandLine.arguments.contains("wide")
                 view = AnyView(VisualizerView(model: visual).frame(width: wide ? 1720 : 1440, height: wide ? 720 : 900))
             } else {
