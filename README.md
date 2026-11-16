@@ -13,6 +13,8 @@
   <a href="https://github.com/Buerxzhang/islet/stargazers"><img alt="Stars" src="https://img.shields.io/github/stars/Buerxzhang/islet?style=social"></a>
 </p>
 
+<p align="center"><a href="https://github.com/Buerxzhang/islet/releases/latest"><strong>下载最新版</strong></a></p>
+
 <p align="center">
   <img src="docs/screenshots/hero.png" width="860" alt="菜单栏里的 islet，下面是点开后的音乐和网速面板">
 </p>
@@ -21,35 +23,35 @@ islet 是一个 macOS 菜单栏工具。它把 CPU、内存、网速这些常看
 
 ## 灵动岛
 
-同一枚胶囊，会随着连接的设备、正在出声的程序而变化。
+胶囊会随连接的设备和正在出声的程序变化。下面用示例数据展示不同状态。
 
-### 刘海屏 MacBook
+### 启用了刘海屏时
 
-菜单栏中间被刘海占掉一块，islet 第一次运行时只打开 CPU、内存、温度、网速，其余的可以在设置里再打开。
+islet 启动时，如果检测到任意一块启用的屏幕有刘海，默认显示 CPU、内存、温度和网速。内屏和外接屏共用同一套指标设置，可以在设置里增减指标。
 
 <table>
   <tr>
-    <td width="170" nowrap>没有连接蓝牙设备</td>
-    <td><img src="docs/screenshots/island-notch-no-bluetooth.png" height="30" alt="没有连接蓝牙设备"></td>
+    <td width="170" nowrap>没有可显示的蓝牙电量</td>
+    <td><img src="docs/screenshots/island-notch-no-bluetooth.png" height="30" alt="没有可显示的蓝牙电量"></td>
   </tr>
   <tr>
-    <td width="170" nowrap>关掉全部指标<br><sub>有声音时才出现</sub></td>
-    <td><img src="docs/screenshots/island-notch-music-only.png" height="30" alt="关掉全部指标"></td>
+    <td width="170" nowrap>仅显示音乐与频谱</td>
+    <td><img src="docs/screenshots/island-notch-music-only.png" height="30" alt="仅显示音乐与频谱"></td>
   </tr>
   <tr>
-    <td width="170" nowrap>只显示指标<br><sub>右侧圆环是蓝牙电量</sub></td>
-    <td><img src="docs/screenshots/island-notch-metrics.png" height="30" alt="只显示指标"></td>
+    <td width="170" nowrap>指标＋蓝牙电量<br><sub>右侧圆环是蓝牙电量</sub></td>
+    <td><img src="docs/screenshots/island-notch-metrics.png" height="30" alt="指标＋蓝牙电量"></td>
   </tr>
   <tr>
     <td width="170" nowrap>其他程序出声<br><sub>显示程序图标</sub></td>
     <td><img src="docs/screenshots/island-notch-other.png" height="30" alt="其他程序出声"></td>
   </tr>
   <tr>
-    <td width="170" nowrap>播放视频<br><sub>只有播放 / 暂停</sub></td>
+    <td width="170" nowrap>播放视频<br><sub>示例中只支持播放 / 暂停</sub></td>
     <td><img src="docs/screenshots/island-notch-video.png" height="30" alt="播放视频"></td>
   </tr>
   <tr>
-    <td width="170" nowrap>播放音乐<br><sub>颜色取自封面</sub></td>
+    <td width="170" nowrap>播放音乐<br><sub>读取到封面时使用封面色</sub></td>
     <td><img src="docs/screenshots/island-notch-music.png" height="30" alt="播放音乐"></td>
   </tr>
   <tr>
@@ -58,31 +60,33 @@ islet 是一个 macOS 菜单栏工具。它把 CPU、内存、网速这些常看
   </tr>
 </table>
 
-### 外接显示器和无刘海的 Mac
+### 只使用无刘海屏时
+
+默认显示更多指标。无风扇的机型默认隐藏风扇项。
 
 <table>
   <tr>
-    <td width="170" nowrap>关掉全部指标<br><sub>有声音时才出现</sub></td>
-    <td><img src="docs/screenshots/island-desktop-music-only.png" height="30" alt="关掉全部指标"></td>
+    <td width="170" nowrap>没有可显示的蓝牙电量</td>
+    <td><img src="docs/screenshots/island-desktop-no-bluetooth.png" height="30" alt="没有可显示的蓝牙电量"></td>
   </tr>
   <tr>
-    <td width="170" nowrap>没有连接蓝牙设备</td>
-    <td><img src="docs/screenshots/island-desktop-no-bluetooth.png" height="30" alt="没有连接蓝牙设备"></td>
+    <td width="170" nowrap>仅显示音乐与频谱</td>
+    <td><img src="docs/screenshots/island-desktop-music-only.png" height="30" alt="仅显示音乐与频谱"></td>
   </tr>
   <tr>
-    <td width="170" nowrap>只显示指标<br><sub>右侧圆环是蓝牙电量</sub></td>
-    <td><img src="docs/screenshots/island-desktop-metrics.png" height="30" alt="只显示指标"></td>
+    <td width="170" nowrap>指标＋蓝牙电量<br><sub>右侧圆环是蓝牙电量</sub></td>
+    <td><img src="docs/screenshots/island-desktop-metrics.png" height="30" alt="指标＋蓝牙电量"></td>
   </tr>
   <tr>
     <td width="170" nowrap>其他程序出声<br><sub>显示程序图标</sub></td>
     <td><img src="docs/screenshots/island-desktop-other.png" height="30" alt="其他程序出声"></td>
   </tr>
   <tr>
-    <td width="170" nowrap>播放视频<br><sub>只有播放 / 暂停</sub></td>
+    <td width="170" nowrap>播放视频<br><sub>示例中只支持播放 / 暂停</sub></td>
     <td><img src="docs/screenshots/island-desktop-video.png" height="30" alt="播放视频"></td>
   </tr>
   <tr>
-    <td width="170" nowrap>播放音乐<br><sub>颜色取自封面</sub></td>
+    <td width="170" nowrap>播放音乐<br><sub>读取到封面时使用封面色</sub></td>
     <td><img src="docs/screenshots/island-desktop-music.png" height="30" alt="播放音乐"></td>
   </tr>
   <tr>
@@ -93,17 +97,18 @@ islet 是一个 macOS 菜单栏工具。它把 CPU、内存、网速这些常看
 
 - 显示哪些指标、按什么顺序排，都在设置里拖动调整。网速可以只显示上传和下载中较快的一方。
 - 蓝牙电量圆环的绿、橙、红分别表示充足、偏低、不足。
-- 没有风扇的机型（比如 MacBook Air）默认不显示风扇。
 - 岛固定在菜单栏最左侧。有新图标挤进来或者被 ⌘ 拖走，它会自己回到原位（可以关掉）。
 - 胶囊外有一圈细亮边，在深色壁纸上也不会和菜单栏糊在一起。
 
 ## 音乐
 
+实时频谱需要 macOS 14.2 或更新版本。
+
 <p align="center">
   <img src="docs/screenshots/music.png" width="300" alt="音乐面板：封面、频谱、进度和播放按钮">
 </p>
 
-- 支持网易云音乐、Apple Music、QQ 音乐、Spotify 等播放器。频谱和按钮的颜色取自封面，切歌时颜色渐变过去，不会突然跳变。
+- 支持网易云音乐、Apple Music、QQ 音乐、Spotify 等播放器。能读取封面时，频谱和按钮使用封面色，切歌时颜色渐变。
 - 按钮跟着应用实际支持的操作走：微信语音、网页视频这类不能切歌的，只显示播放和暂停。
 - 岛上显示的是此刻真正在出声的程序。视频暂停了、音乐还在放，显示的就是音乐；游戏和剪辑软件出声时显示它们的图标，Wine / CrossOver 运行的 Windows 游戏也认得出来。
 
@@ -128,11 +133,11 @@ islet 是一个 macOS 菜单栏工具。它把 CPU、内存、网速这些常看
   </tr>
 </table>
 
-每一项点开都有占用排行，以及最近 5 分钟、1 小时、24 小时的走势。各面板还有一些自己的内容：
+面板提供 5 分钟、1 小时、24 小时三个走势视图。多数面板提供应用排行，温度面板按部件显示传感器。
 
 - 网速：今日和本月流量（每月从哪天算起可以设置）、公网 IP、Wi-Fi 信号、延迟。
 - 功耗：电池健康度和循环次数，还能临时不让电脑休眠，适合下载或渲染时用。
-- 磁盘：外接磁盘，以及每块硬盘的 SMART 健康状态。
+- 磁盘：外接磁盘，以及系统能读取的 NVMe 硬盘 SMART 状态。
 - 温度：CPU、GPU、硬盘、内存等传感器的读数，按部件分组。
 
 ## 风扇调速
@@ -141,9 +146,9 @@ islet 是一个 macOS 菜单栏工具。它把 CPU、内存、网速这些常看
   <img src="docs/screenshots/fan-curve.png" width="640" alt="温度曲线编辑器：拖动控制点设定不同温度下的转速">
 </p>
 
-macOS 自带的风扇策略比较保守，往往等温度上去了，风扇才慢慢跟上。islet 提供三种调速方式：
+适用于 islet 能识别并控制风扇的机型。可选三种调速方式：
 
-- 固定：一直保持某个转速。
+- 固定：设定固定目标转速。
 - 温度曲线：拖动控制点，设定不同温度对应的转速。内置静音、均衡、性能三套预设，可以在预设基础上微调。
 - 规则：比如「CPU 温度高于 85°C 时提到 3300 转」。可以写多条，同时满足时取最高的转速；温度要回落一点才解除，避免风扇来回启停；都不满足时交还给系统。
 
@@ -155,7 +160,7 @@ macOS 自带的风扇策略比较保守，往往等温度上去了，风扇才�
   <img src="docs/screenshots/bluetooth.png" width="300" alt="蓝牙面板：已连接设备的电量圆环和其他设备">
 </p>
 
-面板里列出已配对的设备，点一下就能连接或断开。索尼耳机这类系统读不到电量的设备，islet 也能读出来。
+面板里列出已配对的设备，点一下就能连接或断开。部分索尼耳机在系统未显示电量时，也可以通过 islet 读取。
 
 电量低于设定值时会发一条通知，标题写明是什么设备，右边附上电量圆环：
 
@@ -170,11 +175,13 @@ macOS 自带的风扇策略比较保守，往往等温度上去了，风扇才�
 - 提醒规则：温度、CPU、GPU、功耗、内存持续偏高时发通知。
 - 动态壁纸：让 macOS 的动态壁纸在桌面上一直播放。
 - 支持 ℃ / ℉、MB/s / Mb/s 切换，深浅色主题，设置可以导出、导入。
-- 检查更新：每天自动查一次 GitHub 上的新版本，有新版本时发通知；也可以在「关于」页手动检查。
+- 检查更新：应用运行时每天最多自动检查一次 GitHub 上的新版本，有新版本时发通知；也可以在「关于」页手动检查。
 
 ## 安装
 
-1. 到 [Releases](https://github.com/Buerxzhang/islet/releases) 下载最新的 `islet.zip`，解压后把 **islet.app** 拖进「应用程序」文件夹。
+支持 Apple 芯片和 Intel，需要 macOS 14 或更新版本。实时频谱需要 macOS 14.2 或更新版本。
+
+1. 到 [最新版发布页](https://github.com/Buerxzhang/islet/releases/latest) 下载 `islet.zip`，解压后把 **islet.app** 拖进「应用程序」文件夹。
 2. 第一次打开时，macOS 可能会提示「无法验证开发者」。在「应用程序」里**右键 islet → 打开**，或者到「系统设置 → 隐私与安全性」点「仍要打开」。
 3. 按提示授予权限：
 
