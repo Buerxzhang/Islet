@@ -140,6 +140,29 @@ final class AlertCenter: NSObject, UNUserNotificationCenterDelegate {
         UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: id + UUID().uuidString, content: content, trigger: nil))
     }
 
+    /// 有新版本：点通知打开下载页。
+    func notifyUpdate(_ release: UpdateChecker.Release) {
+        let center = UNUserNotificationCenter.current()
+        center.delegate = self
+        center.requestAuthorization(options: [.alert, .sound]) { granted, _ in
+            guard granted else { return }
+            let content = UNMutableNotificationContent()
+            content.title = "Islet \(release.version) 已发布"
+            content.body = "当前是 \(UpdateChecker.currentVersion)，点这里查看更新内容并下载。"
+            content.userInfo = ["url": release.url.absoluteString]
+            center.add(UNNotificationRequest(identifier: "update-\(release.version)", content: content, trigger: nil))
+        }
+    }
+
+    /// 点了通知：带网址的（新版本）打开网页。
+    func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse,
+                                withCompletionHandler completionHandler: @escaping () -> Void) {
+        if let link = response.notification.request.content.userInfo["url"] as? String, let url = URL(string: link) {
+            DispatchQueue.main.async { NSWorkspace.shared.open(url) }
+        }
+        completionHandler()
+    }
+
     /// 菜单栏程序不在前台：通知也照常弹出横幅。
     func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification,
                                 withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
@@ -477,6 +500,67 @@ struct BatteryInfo: Equatable {
 }
 
 // MARK: - 关于
+
+/// 检查更新：查 GitHub 上最新的 Release，和当前版本比较。只查询、不下载，有新版本时打开下载页。
+enum UpdateChecker {
+    struct Release: Equatable { let version: String; let url: URL }
+    enum State: Equatable { case idle, checking, latest, available(Release), failed }
+
+    /// 自动检查（每天最多一次，有新版本时发一次通知）。
+    static var autoCheck: Bool { UserDefaults.standard.object(forKey: "autoCheckUpdates") as? Bool ?? true }
+    static var currentVersion: String { Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0" }
+
+    /// 版本号按数字逐段比较：1.10.0 > 1.9.2。
+    static func isNewer(_ candidate: String, than current: String) -> Bool {
+        let a = candidate.split(separator: ".").map { Int($0) ?? 0 }, b = current.split(separator: ".").map { Int($0) ?? 0 }
+        for i in 0..<max(a.count, b.count) {
+            let x = i < a.count ? a[i] : 0, y = i < b.count ? b[i] : 0
+            if x != y { return x > y }
+        }
+        return false
+    }
+
+    /// 查询最新版本：成功时回调最新的 Release（可能不比当前新），失败时回调 nil。
+    static func fetchLatest(_ completion: @escaping (Release?) -> Void) {
+        var request = URLRequest(url: URL(string: "https://api.github.com/repos/Buerxzhang/Islet/releases/latest")!)
+        request.timeoutInterval = 8
+        request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
+        URLSession.shared.dataTask(with: request) { data, response, _ in
+            var release: Release?
+            if (response as? HTTPURLResponse)?.statusCode == 200,
+               let object = data.flatMap({ try? JSONSerialization.jsonObject(with: $0) }) as? [String: Any],
+               let tag = object["tag_name"] as? String, let page = (object["html_url"] as? String).flatMap(URL.init(string:)) {
+                release = Release(version: tag.hasPrefix("v") ? String(tag.dropFirst()) : tag, url: page)
+            }
+            DispatchQueue.main.async { completion(release) }
+        }.resume()
+    }
+
+    /// 手动检查（关于页的按钮）。
+    static func check(_ completion: @escaping (State) -> Void) {
+        completion(.checking)
+        fetchLatest { release in
+            UserDefaults.standard.set(Date(), forKey: "lastUpdateCheck")
+            guard let release else { completion(.failed); return }
+            completion(isNewer(release.version, than: currentVersion) ? .available(release) : .latest)
+        }
+    }
+
+    /// 自动检查：启动后和之后每隔几小时调用；距上次检查不到一天就跳过。新版本只通知一次。
+    static func checkInBackground() {
+        guard autoCheck else { return }
+        let last = UserDefaults.standard.object(forKey: "lastUpdateCheck") as? Date ?? .distantPast
+        guard Date().timeIntervalSince(last) > 24 * 3600 else { return }
+        fetchLatest { release in
+            guard let release else { return }   // 失败不记时间，下次再试
+            UserDefaults.standard.set(Date(), forKey: "lastUpdateCheck")
+            guard isNewer(release.version, than: currentVersion),
+                  UserDefaults.standard.string(forKey: "notifiedUpdateVersion") != release.version else { return }
+            UserDefaults.standard.set(release.version, forKey: "notifiedUpdateVersion")
+            AlertCenter.shared.notifyUpdate(release)
+        }
+    }
+}
 
 enum AppInfo {
     static let name = "Islet"

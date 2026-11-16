@@ -87,39 +87,6 @@ enum StatusIcons {
         }
     }
 
-    /// 迷你曲线样式：上行“CPU 18%”小字，下行最近一段时间的走势（0~100%）。
-    static var sparklineStyle: Bool { UserDefaults.standard.bool(forKey: "islandSparkline") }
-
-    static func sparkline(_ label: String, value: String, values: [Double], level: Level) -> NSImage {
-        let title = "\(label) \(value)"
-        let width = max(36, ceil(title.size(withAttributes: [.font: labelFont, .kern: 0.5]).width))
-        return make(width: width) { rect, palette in
-            var attributes: [NSAttributedString.Key: Any] = [.font: labelFont, .kern: 0.5, .foregroundColor: palette.dim]
-            let size = title.size(withAttributes: attributes)
-            attributes[.foregroundColor] = level == .normal ? palette.dim : (level == .warning ? NSColor.systemOrange : NSColor.systemRed)
-            title.draw(at: NSPoint(x: rect.midX - size.width / 2, y: 12.2), withAttributes: attributes)
-            let area = NSRect(x: 0, y: 1, width: rect.width, height: 10)
-            guard values.count >= 2 else { return }
-            let step = area.width / CGFloat(values.count - 1)
-            let line = NSBezierPath()
-            for (index, value) in values.enumerated() {
-                let point = NSPoint(x: area.minX + CGFloat(index) * step, y: area.minY + area.height * CGFloat(min(max(value / 100, 0), 1)))
-                if index == 0 { line.move(to: point) } else { line.line(to: point) }
-            }
-            let fill = line.copy() as! NSBezierPath
-            fill.line(to: NSPoint(x: area.maxX, y: area.minY))
-            fill.line(to: NSPoint(x: area.minX, y: area.minY))
-            fill.close()
-            let color = level == .normal ? palette.fg : (level == .warning ? NSColor.systemOrange : NSColor.systemRed)
-            color.withAlphaComponent(0.25).setFill()
-            fill.fill()
-            line.lineWidth = 1.2
-            line.lineJoinStyle = .round
-            color.setStroke()
-            line.stroke()
-        }
-    }
-
     struct RateRow {
         let arrow: String       // "↓" 或 "↑"
         let value: String       // 如 "1.6MB"

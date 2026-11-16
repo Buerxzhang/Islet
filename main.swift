@@ -281,6 +281,9 @@ final class SpeedBar: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         workspace.addObserver(self, selector: #selector(appLaunched(_:)), name: NSWorkspace.didLaunchApplicationNotification, object: nil)
         scheduleLeftmost(after: 3)   // 启动时也排到最左
         AlertCenter.shared.prepare()
+        // 检查更新：启动 30 秒后一次，之后每 6 小时看一眼（距上次检查不满一天会跳过）
+        DispatchQueue.main.asyncAfter(deadline: .now() + 30) { UpdateChecker.checkInBackground() }
+        Timer.scheduledTimer(withTimeInterval: 6 * 3600, repeats: true) { _ in UpdateChecker.checkInBackground() }
         if UserDefaults.standard.bool(forKey: "keepAwakeOnLaunch") { KeepAwake.shared.set(.always) }
         // 系统不提供禁止 ⌘ 拖动菜单栏图标的接口：发现在菜单栏里 ⌘ 拖动后，自动把灵动岛放回最左
         NSEvent.addGlobalMonitorForEvents(matching: .leftMouseUp) { [weak self] event in
@@ -499,7 +502,7 @@ final class SpeedBar: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         case "settings":
             updateControlTemperatures()
             if let page = SettingsPage.allCases.first(where: { CommandLine.arguments.contains($0.rawValue) }) { settingsModel.page = page }
-            if CommandLine.arguments.contains("open") { settingsModel.expanded = ["music", "network", "bluetooth"] }
+            if CommandLine.arguments.contains("open") { settingsModel.expanded = ["cpu", "temperature", "fan"] }
             SoundController.fillDemo(SoundController.shared.panel)
             view = AnyView(SettingsView(model: settingsModel, flat: true).frame(width: 680, height: 560))
         case "curve":
@@ -1203,11 +1206,8 @@ final class SpeedBar: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             record(.cpu, usage.map { $0 * 100 })
             let text = Self.percent(usage)
             let level = sustainedLevel(.cpu, usage)
-            let cpuTrend = Array((history[.cpu]?.a ?? []).suffix(30))
-            let cpuSpark = StatusIcons.sparklineStyle
-            setIcon(.cpu, key: "\(text)|\(level)" + (cpuSpark ? "|\(cpuTrend.last ?? 0)|\(cpuTrend.count)" : ""), value: text) {
-                cpuSpark ? StatusIcons.sparkline("CPU", value: text, values: cpuTrend, level: level)
-                         : StatusIcons.labeled("CPU", value: text, level: level, widest: "100%")
+            setIcon(.cpu, key: "\(text)|\(level)", value: text) {
+                StatusIcons.labeled("CPU", value: text, level: level, widest: "100%")
             }
             let performance = Self.sysctlInt("hw.perflevel0.physicalcpu") ?? 0
             let efficiency = Self.sysctlInt("hw.perflevel1.physicalcpu") ?? 0
@@ -1222,11 +1222,8 @@ final class SpeedBar: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             record(.gpu, usage.map { $0 * 100 })
             let text = Self.percent(usage)
             let level = sustainedLevel(.gpu, usage)
-            let gpuTrend = Array((history[.gpu]?.a ?? []).suffix(30))
-            let gpuSpark = StatusIcons.sparklineStyle
-            setIcon(.gpu, key: "\(text)|\(level)" + (gpuSpark ? "|\(gpuTrend.last ?? 0)|\(gpuTrend.count)" : ""), value: text) {
-                gpuSpark ? StatusIcons.sparkline("GPU", value: text, values: gpuTrend, level: level)
-                         : StatusIcons.labeled("GPU", value: text, level: level, widest: "100%")
+            setIcon(.gpu, key: "\(text)|\(level)", value: text) {
+                StatusIcons.labeled("GPU", value: text, level: level, widest: "100%")
             }
             heroes[.gpu] = HeroData(fraction: usage, tone: .load, toneValue: usage,
                                     value: usage.map { "\(Int(($0 * 100).rounded()))" } ?? "—", unit: "% 占用",

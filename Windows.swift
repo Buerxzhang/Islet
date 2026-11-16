@@ -130,6 +130,7 @@ final class SettingsModel: ObservableObject {
     var onUnits: () -> Void = {}
     @Published var alertRules = AlertCenter.rules
     @Published var stars: Int?
+    @Published var update: UpdateChecker.State = .idle
     @Published var showDonate = false
     /// 灵动岛页里展开了设置的项（music、bluetooth、cpu、network…）。
     @Published var expanded: Set<String> = []
@@ -505,7 +506,7 @@ struct SettingsView: View {
         default:
             let setting = SettingsModel.metricSetting(id)
             let icon = setting.map(Self.metricIcon) ?? ("circle", Color.gray)
-            return (setting?.title ?? id, icon.0, icon.1, ["cpu", "gpu", "temperature", "fan"].contains(id))
+            return (setting?.title ?? id, icon.0, icon.1, ["fan"].contains(id))
         }
     }
 
@@ -540,8 +541,6 @@ struct SettingsView: View {
         case "music": musicDetail(p)
         case "bluetooth": bluetoothDetail(p)
         case "network": networkDetail(p)
-        case "cpu", "gpu": sparklineDetail(p)
-        case "temperature": temperatureDetail(p)
         case "fan": fanDetail(p)
         default: EmptyView()
         }
@@ -609,27 +608,6 @@ struct SettingsView: View {
         }
     }
 
-    private func sparklineDetail(_ p: Palette) -> some View {
-        detail(p) {
-            detailRow(p, "显示走势", "CPU、GPU 用迷你曲线代替数字") {
-                toggle("islandSparkline", default: false) { _ in model.onUnits() }
-            }
-        }
-    }
-
-    private func temperatureDetail(_ p: Palette) -> some View {
-        detail(p) {
-            detailRow(p, "单位") {
-                Segmented(options: [(false, "℃"), (true, "℉")], selection: Units.fahrenheit) { value in
-                    UserDefaults.standard.set(value, forKey: "unitFahrenheit")
-                    model.onUnits()
-                    model.refresh()
-                }
-                .frame(width: 120)
-            }
-        }
-    }
-
     private func networkDetail(_ p: Palette) -> some View {
         detail(p) {
             detailRow(p, "显示方式", "自动：只显示较快的一方") {
@@ -670,6 +648,15 @@ struct SettingsView: View {
 
     private func fanDetail(_ p: Palette) -> some View {
         detail(p) {
+            row(p, "温度单位", "菜单栏和面板里的温度", icon: "thermometer.variable", tint: Color(hex: 0xFF453A)) {
+                Segmented(options: [(false, "℃"), (true, "℉")], selection: Units.fahrenheit) { value in
+                    UserDefaults.standard.set(value, forKey: "unitFahrenheit")
+                    model.onUnits()
+                    model.refresh()
+                }
+                .frame(width: 120)
+            }
+            divider(p)
             row(p, "调速依据温度", basisSubtitle, icon: "thermometer.medium", tint: Color(hex: 0xFF9F0A)) {
                 Segmented(options: TemperatureBasis.allCases.reversed().map { ($0, $0.label) },
                           selection: fanClient.config.basis) { basis in
@@ -824,6 +811,24 @@ struct SettingsView: View {
             .fixedSize(horizontal: false, vertical: true)
     }
 
+    private var updateTitle: String {
+        switch model.update {
+        case .available(let release): return "发现新版本 \(release.version)"
+        case .latest: return "已是最新版本"
+        default: return "当前版本 \(UpdateChecker.currentVersion)"
+        }
+    }
+
+    private var updateSubtitle: String {
+        switch model.update {
+        case .checking: return "正在查询 GitHub…"
+        case .failed: return "检查失败，请检查网络后再试"
+        case .available: return "当前是 \(UpdateChecker.currentVersion)，下载后替换「应用程序」里的 Islet"
+        case .latest: return "当前版本 \(UpdateChecker.currentVersion)"
+        case .idle: return "从 GitHub 查询是否有新版本"
+        }
+    }
+
     @ViewBuilder private func aboutPage(_ p: Palette) -> some View {
         // 头部：图标、名称、版本、简介
         HStack(spacing: 16) {
@@ -864,6 +869,22 @@ struct SettingsView: View {
             }
         }
         .onAppear { if !flat { AppInfo.fetchStars { model.stars = $0 } } }
+        section(p, "更新") {
+            row(p, updateTitle, updateSubtitle, icon: "arrow.triangle.2.circlepath", tint: Color(hex: 0x0A84FF)) {
+                if case .available(let release) = model.update {
+                    PlainButton(title: "下载", prominent: true) { NSWorkspace.shared.open(release.url) }
+                } else {
+                    PlainButton(title: model.update == .checking ? "检查中…" : "检查更新") {
+                        UpdateChecker.check { model.update = $0 }
+                    }
+                    .disabled(model.update == .checking)
+                }
+            }
+            divider(p)
+            row(p, "自动检查更新", "每天一次，有新版本时发通知", icon: "bell.badge", tint: Color(hex: 0xFF9F0A)) {
+                toggle("autoCheckUpdates", default: true)
+            }
+        }
         section(p, "诊断") {
             row(p, Diagnostics.summary(), "反馈时自动复制报告，粘贴即可", icon: "stethoscope", tint: Color(hex: 0xFF453A)) {
                 HStack(spacing: 8) {

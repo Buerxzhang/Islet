@@ -120,16 +120,11 @@ final class MetricsIslandView: NSView {
     private var shownBackdrop: [NSColor] { backdropFade?.colors ?? backdrop }
     static let dividerSpace: CGFloat = 8   // 分隔线两侧的留白
 
-    /// 设置里的预览：按当前设置（显示哪些、顺序、网速方式、曲线样式、单位）用示例数据画。
+    /// 设置里的预览：按当前设置（显示哪些、顺序、网速方式、单位）用示例数据画。
     static func previewSegments() -> [(metric: Metric, image: NSImage)] {
         let demo = Dictionary(uniqueKeysWithValues: demoSegments().map { ($0.metric, $0.image) })
-        let wave = (0..<30).map { 30 + 18 * sin(Double($0) / 3.5) }
         return MetricOrder.current.filter(\.isShown).compactMap { metric in
             switch metric {
-            case .cpu where StatusIcons.sparklineStyle:
-                return (metric, StatusIcons.sparkline("CPU", value: "18%", values: wave, level: .normal))
-            case .gpu where StatusIcons.sparklineStyle:
-                return (metric, StatusIcons.sparkline("GPU", value: "32%", values: wave.map { $0 * 0.8 + 10 }, level: .normal))
             case .temperature:
                 return (metric, StatusIcons.labeled("TEMP", value: Units.degrees(52), level: .normal, widest: "108°"))
             case .network:

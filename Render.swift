@@ -22,11 +22,6 @@ enum RenderTargets {
     if launchArguments.contains("netboth") {
         probe.segments[probe.segments.count - 1].image = StatusIcons.network([.init(arrow: "↑", value: "0KB", active: false), .init(arrow: "↓", value: "1.2MB", active: true)])
     }
-    if launchArguments.contains("spark") {
-        let wave = (0..<30).map { 20 + 25 * sin(Double($0) / 4) + Double($0) }
-        probe.segments[0].image = StatusIcons.sparkline("CPU", value: "18%", values: wave, level: .normal)
-        probe.segments[1].image = StatusIcons.sparkline("GPU", value: "92%", values: wave.map { $0 + 30 }, level: .critical)
-    }
     // 第三行：有声音时向左展开出音频部分
     let art = NSImage(size: NSSize(width: 100, height: 100), flipped: false) { rect in
         NSGradient(starting: NSColor(srgbRed: 1, green: 0.45, blue: 0.3, alpha: 1),
