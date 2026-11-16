@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDisplayName</key>
+	<string>Islet</string>
+	<key>CFBundleExecutable</key>
+	<string>SpeedBar</string>
+	<key>CFBundleIconFile</key>
+	<string>SpeedBar.icns</string>
+	<key>CFBundleIdentifier</key>
+	<string>local.codex.compact-speed-bar</string>
+	<key>CFBundleName</key>
+	<string>Islet</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>1.0.0</string>
+	<key>CFBundleVersion</key>
+	<string>69</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>14.0</string>
+	<key>LSUIElement</key>
+	<true/>
+	<key>NSAudioCaptureUsageDescription</key>
+	<string>用于在菜单栏显示正在播放的音乐频谱。只读取电脑播放出来的声音，不使用麦克风，也不会保存或上传。</string>
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>在“声音”面板里显示、连接和断开已配对的蓝牙设备。</string>
+	<key>NSHighResolutionCapable</key>
+	<true/>
+</dict>
+</plist>
