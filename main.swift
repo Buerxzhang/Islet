@@ -424,7 +424,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         wirePanel()
         wireSettings()
         FanHelperClient.shared.resume()
-        WallpaperController.shared.start()
+        // 动态壁纸已移除：清掉旧版本留下的设置。
+        UserDefaults.standard.removeObject(forKey: "wallpaperMode")
+        UserDefaults.standard.removeObject(forKey: "wallpaperVideo")
         SmoothScrollController.shared.start()
         monitor.pathUpdateHandler = { [weak self] _ in
             DispatchQueue.main.async { self?.resetSampling() }
@@ -756,7 +758,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             guard let self, self.shownMetric == .network else { return }
             self.panel.connection = info
         }
-        panel.onSettings = { [weak self] in self?.openSettings() }
+        // 从面板进入设置：当前面板对应的项在设置里有详细选项（网速、风扇、帧率）就直接展开它
+        panel.onSettings = { [weak self] in
+            guard let self else { return }
+            let id = "\(self.panel.metric)"
+            self.openSettings(page: .menuBar, expand: [Metric.network, .fan, .fps].contains(self.panel.metric) ? id : nil)
+        }
         panel.onQuit = { NSApp.terminate(nil) }
         panel.onDiagnostics = { [weak self] in
             Diagnostics.copyReport()
@@ -890,12 +897,60 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         floating.target = self
         floating.state = Self.floatsIsland ? .on : .off
         menu.addItem(floating)
+        let smooth = NSMenuItem(title: "平滑滚动", action: #selector(menuToggleSmoothScroll), keyEquivalent: "")
+        smooth.target = self
+        smooth.state = SmoothScrollController.shared.enabled ? .on : .off
+        menu.addItem(smooth)
+        if let resolution = resolutionMenu() { menu.addItem(resolution) }
+        menu.addItem(.separator())
         let about = NSMenuItem(title: "关于 islet", action: #selector(menuOpenAbout), keyEquivalent: "")
         about.target = self
         menu.addItem(about)
         menu.addItem(.separator())
         menu.addItem(NSMenuItem(title: "退出 islet", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
         return menu
+    }
+
+    @objc private func menuToggleSmoothScroll() {
+        SmoothScrollController.shared.setEnabled(!SmoothScrollController.shared.enabled)
+    }
+
+    /// “分辨率”子菜单：每块屏一组，列设置里默认显示的那几档，勾选当前在用的。
+    private func resolutionMenu() -> NSMenuItem? {
+        let manager = DisplayManager.shared
+        manager.refresh()
+        let screens = manager.displays.filter { $0.canSwitch && $0.sizeOptions.count > 1 }
+        guard !screens.isEmpty, !manager.busy else { return nil }
+        let submenu = NSMenu()
+        for (index, display) in screens.enumerated() {
+            if index > 0 { submenu.addItem(.separator()) }
+            if screens.count > 1 {
+                let header = NSMenuItem(title: display.name, action: nil, keyEquivalent: "")
+                header.isEnabled = false
+                submenu.addItem(header)
+            }
+            for mode in display.sizeOptions {
+                let label = display.label(mode)
+                let item = NSMenuItem(title: label.isEmpty ? mode.size : "\(mode.size)  \(label)",
+                                      action: #selector(menuChooseResolution(_:)), keyEquivalent: "")
+                item.target = self
+                item.representedObject = (display.id, mode.id)
+                item.state = mode.group == display.current.group ? .on : .off
+                submenu.addItem(item)
+            }
+        }
+        let item = NSMenuItem(title: "分辨率", action: nil, keyEquivalent: "")
+        item.submenu = submenu
+        return item
+    }
+
+    @objc private func menuChooseResolution(_ sender: NSMenuItem) {
+        guard let (displayID, modeID) = sender.representedObject as? (CGDirectDisplayID, Int32) else { return }
+        let manager = DisplayManager.shared
+        guard let display = manager.displays.first(where: { $0.id == displayID }),
+              let mode = display.sizeOptions.first(where: { $0.id == modeID }),
+              mode.group != display.current.group else { return }
+        manager.choose(mode, on: display)
     }
 
     private func showIslandMenu(from anchor: NSView) {
@@ -918,14 +973,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
 
     private func openSettings(page: SettingsPage? = nil, expand: String? = nil) {
         if let page { settingsModel.page = page }
-        if let expand { settingsModel.expanded.insert(expand) }
+        if let expand {
+            settingsModel.expanded.insert(expand)
+            settingsModel.scrollTarget = expand
+        }
         popover.performClose(nil)
         updateControlTemperatures()
-        // 宽度 = 侧栏 190 + 分隔线 1 + 内容左右边距 22×2 + 预览里岛的宽度：岛和下面的卡片一样宽（打开后再按实际宽度微调）。
-        // 指标关得很少、岛很短时，内容至少留 480，设置行不会挤
-        let content = max(MenuBarPreview.islandWidth(), 480)
-        let width = ceil(190 + 1 + 22 * 2 + content)
-        windows.show("settings", title: "islet 设置", size: NSSize(width: width, height: 620), resizable: true) {
+        // 宽度跟着预览里岛的宽度走，岛和下面的卡片一样宽（算法见 MenuBarPreview.windowWidth）
+        let width = MenuBarPreview.windowWidth()
+        // 关闭设置时收起展开的项，下次打开是干净的列表
+        windows.show("settings", title: "islet 设置", size: NSSize(width: width, height: 620), resizable: true,
+                     onClose: { [weak self] in
+                        self?.settingsModel.expanded = []
+                        DisplayManager.shared.collapseAll()
+                     }) {
             SettingsView(model: settingsModel)
         }
     }

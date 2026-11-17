@@ -845,10 +845,12 @@ struct KeepAwakeCard: View {
                     VStack(alignment: .leading, spacing: 8) {
                         Segmented(options: KeepAwake.Duration.allCases.map { ($0, $0.label) },
                                   selection: keepAwake.duration) { keepAwake.set($0) }
+                        Text(keepAwake.duration == .always ? "电脑不自动睡眠，重启 islet 后也保持" : "电脑不自动睡眠，适合下载、渲染")
+                            .font(Typo.caption).foregroundStyle(p.text3)
                         HStack {
                             VStack(alignment: .leading, spacing: 1) {
                                 Text("屏幕也保持常亮").font(Typo.body).foregroundStyle(p.text)
-                                Text(keepAwake.isActive ? "电脑不会因闲置而睡眠" : "下载、渲染时防止电脑睡眠")
+                                Text("关闭时屏幕照常熄灭")
                                     .font(Typo.caption).foregroundStyle(p.text3)
                             }
                             Spacer()

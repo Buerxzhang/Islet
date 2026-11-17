@@ -83,7 +83,7 @@ final class KeepAwake: ObservableObject {
 
     @Published private(set) var duration: Duration = .off
     @Published private(set) var until: Date?
-    @Published private(set) var keepDisplayOn = false
+    @Published private(set) var keepDisplayOn = UserDefaults.standard.bool(forKey: "keepAwakeDisplay")
     private var assertion: IOPMAssertionID = 0
     private var timer: Timer?
 
@@ -96,8 +96,10 @@ final class KeepAwake: ObservableObject {
         return String(format: "剩余 %d:%02d:%02d", remaining / 3600, remaining / 60 % 60, remaining % 60)
     }
 
+    /// 选“一直”时记住，下次启动 islet 自动恢复（沿用原来“启动时保持唤醒”的偏好键）。
     func set(_ duration: Duration) {
         self.duration = duration
+        UserDefaults.standard.set(duration == .always, forKey: "keepAwakeOnLaunch")
         until = duration.seconds.map { Date(timeIntervalSinceNow: $0) }
         apply()
         timer?.invalidate()
@@ -115,6 +117,7 @@ final class KeepAwake: ObservableObject {
 
     func setKeepDisplayOn(_ on: Bool) {
         keepDisplayOn = on
+        UserDefaults.standard.set(on, forKey: "keepAwakeDisplay")
         apply()
     }
 

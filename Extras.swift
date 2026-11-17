@@ -231,36 +231,9 @@ final class AlertCenter: NSObject, UNUserNotificationCenterDelegate {
     }
 }
 
-// MARK: - 设置导出 / 导入
+// MARK: - 重新启动
 
 enum SettingsTransfer {
-    /// 导出全部设置（含流量统计）为 plist 文件。
-    static func export() {
-        guard let domain = Bundle.main.bundleIdentifier,
-              let values = UserDefaults.standard.persistentDomain(forName: domain) else { return }
-        let filtered = values.filter { !$0.key.hasPrefix("NSStatusItem") && !$0.key.hasPrefix("NSWindow Frame") }
-        let panel = NSSavePanel()
-        panel.nameFieldStringValue = "islet 设置.plist"
-        panel.allowedContentTypes = [.propertyList]
-        NSApp.activate()
-        guard panel.runModal() == .OK, let url = panel.url,
-              let data = try? PropertyListSerialization.data(fromPropertyList: filtered, format: .xml, options: 0) else { return }
-        try? data.write(to: url)
-    }
-
-    /// 导入设置：覆盖现有设置后重新启动。返回 false 表示文件无效。
-    static func importSettings() -> Bool {
-        let panel = NSOpenPanel()
-        panel.allowedContentTypes = [.propertyList]
-        NSApp.activate()
-        guard panel.runModal() == .OK, let url = panel.url, let data = try? Data(contentsOf: url),
-              let values = try? PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any] else { return false }
-        values.forEach { UserDefaults.standard.set($1, forKey: $0) }
-        UserDefaults.standard.synchronize()
-        relaunch()
-        return true
-    }
-
     static func relaunch() {
         let task = Process()
         task.executableURL = URL(fileURLWithPath: "/bin/sh")

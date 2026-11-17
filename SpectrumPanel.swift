@@ -396,16 +396,27 @@ struct MenuBarPreview: NSViewRepresentable {
             bars.refresh()
         }
 
-        /// 设置窗口跟着岛定宽：预览区和下面的卡片同宽，所以把窗口加宽 / 收窄“岛宽 − 预览区宽”，
-        /// 岛和卡片就一样宽。指标关得很少、岛很短时，内容至少留 480，设置行不会挤。
+        /// 设置窗口跟着岛定宽：窗口宽度直接由岛宽算出来（见 MenuBarPreview.windowWidth），不看预览区当前多宽——
+        /// 预览区宽度会随滚动条出现 / 消失、布局先后而变，跟着它调会来回闪。
+        private var pendingWidth: CGFloat?
+
         private func fitWindowToIsland(capsuleWidth: CGFloat) {
-            guard let window, window.styleMask.contains(.resizable) else { return }
-            let delta = max(capsuleWidth, 480) - bounds.width
-            guard abs(delta) > 0.5 else { return }
-            DispatchQueue.main.async {
+            // 用户按着鼠标（拖窗口、拉边框）时不改，免得和拖动打架；松手后下一次布局（最多 0.5 秒）再对齐
+            guard let window, window.styleMask.contains(.resizable), !window.inLiveResize,
+                  NSEvent.pressedMouseButtons == 0 else { return }
+            let width = MenuBarPreview.windowWidth(capsule: capsuleWidth)
+            guard abs(window.frame.width - width) >= 1 else { pendingWidth = nil; return }
+            // 刚打开时会连着布局好几次：只排一次调整，执行时用最新算出的宽度，不会按旧值来回改
+            let scheduled = pendingWidth != nil
+            pendingWidth = width
+            guard !scheduled else { return }
+            DispatchQueue.main.async { [weak self] in
+                guard let self, let width = self.pendingWidth else { return }
+                self.pendingWidth = nil
+                guard abs(window.frame.width - width) >= 1 else { return }
                 var frame = window.frame
-                frame.size.width = (frame.width + delta).rounded()
-                window.minSize = NSSize(width: frame.width, height: window.minSize.height)
+                frame.size.width = width
+                window.minSize = NSSize(width: min(width, 640), height: window.minSize.height)
                 window.setFrame(frame, display: true)
             }
         }
@@ -471,12 +482,18 @@ struct MenuBarPreview: NSViewRepresentable {
         }
     }
 
-    /// 预览里的岛按当前设置的实际宽度（设置窗口据此定宽，让岛和下面的卡片一样宽）。
-    static func islandWidth() -> CGFloat {
+    /// 设置窗口的宽度：侧栏 190 + 分隔线 1 + 内容左右边距 22×2 + 岛宽（至少 480，岛很短时设置行不会挤）。
+    /// 设置页不显示滚动条，所以不用给它留宽度。岛和下面的卡片因此一样宽。
+    static func windowWidth(capsule: CGFloat) -> CGFloat {
+        ceil(190 + 1 + 22 * 2 + max(capsule.rounded(.up), 480))
+    }
+
+    /// 按当前设置算出的设置窗口宽度（打开窗口时用，和打开后的调整同一个算法，不会跳）。
+    static func windowWidth() -> CGFloat {
         let host = Host(frame: NSRect(x: 0, y: 0, width: 1200, height: 46))
         host.apply(SpectrumLook.current, merged: true)
         host.layout()
-        return host.islandWidth
+        return windowWidth(capsule: host.islandWidth - 6)
     }
 
     func makeNSView(context: Context) -> Host {
@@ -487,3 +504,4 @@ struct MenuBarPreview: NSViewRepresentable {
 
     func updateNSView(_ host: Host, context: Context) { host.apply(look, merged: merged) }
 }
+

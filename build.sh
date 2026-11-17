@@ -28,7 +28,7 @@ for arch in arm64 x86_64; do
     swiftc -O -whole-module-optimization -target "$arch-apple-macos$min_macos" \
         -import-objc-header Bridging.h \
         AppTraffic.swift Settings.swift SystemStats.swift SMC.swift FanControl.swift FanHelperClient.swift \
-        Theme.swift Panel.swift Windows.swift Diagnostics.swift Features.swift Wallpaper.swift SmoothScroll.swift DisplayManager.swift Spectrum.swift NowPlaying.swift Sound.swift Visualizer.swift Extras.swift SpectrumPanel.swift SoundSource.swift Island.swift Render.swift FPSMeter.swift \
+        Theme.swift Panel.swift Windows.swift Diagnostics.swift Features.swift SmoothScroll.swift DisplayManager.swift Spectrum.swift NowPlaying.swift Sound.swift Visualizer.swift Extras.swift SpectrumPanel.swift SoundSource.swift Island.swift Render.swift FPSMeter.swift \
         StatusIcons.swift main.swift \
         -o "build/islet-$arch"
     # 风扇控制辅助程序（以 root 运行，安装时复制到 /Library/PrivilegedHelperTools）

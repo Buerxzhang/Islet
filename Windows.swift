@@ -10,11 +10,11 @@ final class WindowManager {
     private var windows: [String: NSWindow] = [:]
 
     /// 打开（或前置）一个 SwiftUI 窗口。
-    func show<Content: View>(_ id: String, title: String, size: NSSize, resizable: Bool = false, @ViewBuilder content: () -> Content) {
+    func show<Content: View>(_ id: String, title: String, size: NSSize, resizable: Bool = false,
+                             onClose: (() -> Void)? = nil, @ViewBuilder content: () -> Content) {
         if let window = windows[id] {
             window.appearance = AppearanceSetting.current.nsAppearance
-            if resizable { fitWidth(window, to: size.width) }
-            bringToFront(window)
+            bringToFront(window)   // 宽度不在这里改：设置窗口由预览里的岛决定宽度，两处都改会来回闪
             return
         }
         // 不用 fullSizeContentView：内容从标题栏下方开始，滚动时不会从红黄绿按钮下面穿过
@@ -23,7 +23,7 @@ final class WindowManager {
         let window = NSWindow(contentRect: NSRect(origin: .zero, size: size), styleMask: style, backing: .buffered, defer: false)
         window.title = title
         window.titleVisibility = .hidden          // 页面里已有大标题
-        window.titlebarAppearsTransparent = true  // 标题栏与窗口同色，看起来是一整块
+        // 不设 titlebarAppearsTransparent：macOS 27 上透明标题栏的窗口拖向另一块屏时会被拽回原屏
         window.backgroundColor = Self.panelColor
         window.isReleasedWhenClosed = false
         window.isExcludedFromWindowsMenu = true
@@ -35,28 +35,23 @@ final class WindowManager {
         window.collectionBehavior = [.moveToActiveSpace, .fullScreenAuxiliary]
         window.hidesOnDeactivate = false
         // 记住窗口位置：第一次居中，之后在上次拖到的地方打开
-        if window.setFrameUsingName("islet.\(id)") {
-            // 记住的是上次的位置；宽度按这次的设计宽度（设置窗口随岛的宽度变化）
-            if resizable { fitWidth(window, to: size.width) }
-        } else {
-            window.center()
+        if resizable { window.minSize = NSSize(width: 640, height: 480) }
+        // 记住窗口位置和高度：第一次按设计尺寸居中，之后沿用上次的位置和高度。
+        // 可调大小的窗口宽度用这次算好的设计宽度（设置窗口 = 预览里岛的宽度），不用上次的：否则打开后预览再改宽度，会跳一下
+        let restored = window.setFrameUsingName("islet.\(id)")
+        window.setFrameAutosaveName("islet.\(id)")   // 这一步也会套用上次保存的尺寸，所以宽度放在它后面改
+        if !restored { window.center() }
+        if restored, resizable {
+            var frame = window.frame
+            frame.size.width = window.frameRect(forContentRect: NSRect(origin: .zero, size: size)).width
+            window.setFrame(frame, display: false)
         }
-        window.setFrameAutosaveName("islet.\(id)")
         NotificationCenter.default.addObserver(forName: NSWindow.willCloseNotification, object: window, queue: .main) { [weak self] _ in
+            onClose?()
             DispatchQueue.main.async { self?.updateDockIcon() }
         }
         windows[id] = window
         bringToFront(window)
-    }
-
-    /// 可调大小的窗口：宽度设为设计宽度（左上角不动），并以它为最小宽度。
-    private func fitWidth(_ window: NSWindow, to contentWidth: CGFloat) {
-        let width = window.frameRect(forContentRect: NSRect(x: 0, y: 0, width: contentWidth, height: 100)).width
-        window.minSize = NSSize(width: width, height: 480)
-        guard abs(window.frame.width - width) > 0.5 else { return }
-        var frame = window.frame
-        frame.size.width = width
-        window.setFrame(frame, display: true)
     }
 
     /// 有窗口开着时在程序坞显示图标（菜单栏程序平时没有，窗口落到后面就找不回来）；全部关闭后隐藏。
@@ -95,7 +90,7 @@ final class WindowManager {
 /// 设置窗口的分页（左侧导航）。
 enum SettingsPage: String, CaseIterable, Identifiable {
     case menuBar, extensions, general, about
-    static let bottom: [SettingsPage] = [.general, .about]
+    static let bottom: [SettingsPage] = [.about]
     var id: String { rawValue }
     var title: String {
         switch self {
@@ -143,6 +138,8 @@ final class SettingsModel: ObservableObject {
     @Published var showDonate = false
     /// 灵动岛页里展开了设置的项（music、bluetooth、cpu、network…）。
     @Published var expanded: Set<String> = []
+    /// 打开设置时要滚到的项（滚到后清空）
+    @Published var scrollTarget: String?
     var onResetAll: () -> Void = {}
     /// 灵动岛各项的顺序；拖动时实时变化，松手后才保存并应用到菜单栏。
     @Published var islandOrder = IslandOrder.items
@@ -276,7 +273,6 @@ final class SettingsModel: ObservableObject {
 struct SettingsView: View {
     @ObservedObject var model: SettingsModel
     @ObservedObject var fanClient = FanHelperClient.shared
-    @ObservedObject var wallpaper = WallpaperController.shared
     @ObservedObject var smoothScroll = SmoothScrollController.shared
     @ObservedObject var displays = DisplayManager.shared
     /// 走查用：不包 ScrollView（离屏渲染画不出滚动视图的内容）。
@@ -288,7 +284,15 @@ struct SettingsView: View {
                 sidebar(p)
                 Rectangle().fill(p.separator).frame(width: 1)
                 VStack(spacing: 0) {
-                    if flat { page(p) } else { ScrollView { page(p) } }
+                    // 不显示滚动条：接了鼠标时系统用常驻滚动条，占 17 点宽，而且刚打开时系统先报“悬浮”、过一会儿才改成常驻，
+                    // 窗口宽度（跟着预览里的岛走）会因此跳一下。滚轮、触控板照常滚动
+                    if flat { page(p) } else {
+                        ScrollViewReader { proxy in
+                            ScrollView { page(p) }.scrollIndicators(.never)
+                                .onAppear { scroll(proxy) }
+                                .onChange(of: model.scrollTarget) { _, _ in scroll(proxy) }
+                        }
+                    }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             }
@@ -355,10 +359,6 @@ struct SettingsView: View {
         section(p, "启动") {
             row(p, "登录时启动", nil, icon: "power", tint: Color(hex: 0x30D158)) {
                 Toggle2(isOn: model.launchAtLogin, onChange: model.setLaunchAtLogin)
-            }
-            divider(p)
-            row(p, "启动时保持唤醒", "电脑不自动睡眠", icon: "cup.and.saucer.fill", tint: Color(hex: 0xFF9F0A)) {
-                toggle("keepAwakeOnLaunch", default: false) { on in KeepAwake.shared.set(on ? .always : .off) }
             }
         }
         section(p, "外观") {
@@ -479,12 +479,22 @@ struct SettingsView: View {
                 VStack(alignment: .leading, spacing: 0) {
                     if index > 0 { divider(p) }
                     itemRow(p, id)
+                        .id("item-\(id)")
                         .background(frameReader(id))
                         .opacity(model.dragging == id ? 0.25 : 1)
                         .gesture(dragGesture(id))
                     if model.expanded.contains(id), model.dragging != id { itemDetail(p, id) }
                 }
             }
+        }
+    }
+
+    /// 滚到要定位的项：等这一帧布局完（展开的内容出现）再滚，项的标题行停在顶部附近。
+    private func scroll(_ proxy: ScrollViewProxy) {
+        guard let target = model.scrollTarget else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+            withAnimation(.easeOut(duration: 0.25)) { proxy.scrollTo("item-\(target)", anchor: UnitPoint(x: 0.5, y: 0.08)) }
+            model.scrollTarget = nil
         }
     }
 
@@ -870,34 +880,12 @@ struct SettingsView: View {
             }
         }
         displaysSection(p)
-        section(p, "动态壁纸") {
-            row(p, "播放", "桌面持续播放", icon: "play.fill", tint: Color(hex: 0xBF5AF2)) {
-                Segmented(options: WallpaperMode.allCases.map { ($0, $0.label) },
-                          selection: wallpaper.mode, onSelect: wallpaper.setMode)
-                    .frame(width: 230)
-            }
-            divider(p)
-            row(p, "视频", wallpaper.mode == .off ? nil : wallpaper.status, icon: "film.fill", tint: Color(hex: 0xBF5AF2)) {
-                Menu(wallpaper.videoID == nil
-                     ? "跟随系统（\(wallpaper.systemChoiceName ?? "无")）"
-                     : wallpaper.effectiveVideo?.name ?? "—") {
-                    Button("跟随系统设置（\(wallpaper.systemChoiceName ?? "无")）") { wallpaper.setVideo(nil) }
-                    Divider()
-                    ForEach(wallpaper.videos) { video in
-                        Button(video.name) { wallpaper.setVideo(video.id) }
-                    }
-                }
-                .frame(width: 200)
-            }
-        }
-        Text("“仅纯桌面时”：只在看得到桌面时播放。4K 约多耗 1–3 W。")
-            .font(Typo.caption).foregroundStyle(p.text3)
-            .fixedSize(horizontal: false, vertical: true)
     }
 
     // MARK: 显示器
 
-    /// 每块屏一行：当前分辨率（可切换）；外接屏缺少 HiDPI 档位时可以添加，islet 添加过的可以移除。
+    /// 每块屏一行，下面是“文字大小”选项。没有实用 HiDPI 档位的外接屏有个 HiDPI 开关：
+    /// 打开 = 写一份显示配置并切到推荐大小，关掉 = 移除 islet 写的配置。别的工具写的配置不给开关。
     private func displaysSection(_ p: Palette) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             section(p, "显示器") {
@@ -907,7 +895,6 @@ struct SettingsView: View {
                 ForEach(Array(displays.displays.enumerated()), id: \.element.id) { index, display in
                     if index > 0 { divider(p) }
                     displayRow(p, display)
-                    hiDPIRow(p, display)
                 }
                 if let message = displays.message {
                     divider(p)
@@ -916,69 +903,116 @@ struct SettingsView: View {
                         .frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, 8)
                 }
             }
-            Text("HiDPI 档位用两倍像素渲染，文字更细腻。切换分辨率后 15 秒内不确认，会自动恢复原来的分辨率。")
-                .font(Typo.caption).foregroundStyle(p.text3).fixedSize(horizontal: false, vertical: true)
+            Text("切换显示模式后，15 秒内未确认将自动恢复。")
+            .font(Typo.caption).foregroundStyle(p.text3).fixedSize(horizontal: false, vertical: true)
+            .padding(.horizontal, 4)
         }
         .onAppear { displays.refresh() }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didChangeScreenParametersNotification)) { _ in displays.refresh() }
     }
 
+    private enum HiDPISwitch { case none, off, on }
+
+    private func hiDPISwitch(_ display: DisplayManager.Display) -> HiDPISwitch {
+        guard display.canSwitch, let status = displays.overrides[display.id], status.external else { return .none }
+        if status.owned { return .on }
+        if !status.installed, !display.hasHiDPIChoices, !status.sizes.isEmpty { return .off }
+        return .none
+    }
+
     private func displayRow(_ p: Palette, _ display: DisplayManager.Display) -> some View {
         let current = display.current
+        let hiDPI = hiDPISwitch(display)
+        let options = displays.expanded.contains(display.id) ? display.allSizes : display.sizeOptions
+        // 没开 HiDPI 且正用原生分辨率时不列大小（只剩一个“原生的一半”，没什么可选）
+        let showSizes = display.canSwitch && options.count > 1 && !(hiDPI == .off && current.native && !current.hiDPI)
         let subtitle: String
         if !display.active { subtitle = "未启用" }
         else if display.mirrored { subtitle = "镜像中，解除镜像后可以单独调整" }
-        else { subtitle = [current.hiDPI ? "HiDPI" : nil, current.rate.isEmpty ? nil : current.rate].compactMap { $0 }.joined(separator: " · ") }
-        return row(p, display.isMain ? "\(display.name)（主屏）" : display.name, subtitle.isEmpty ? nil : subtitle,
-                   icon: display.builtIn ? "laptopcomputer" : "display", tint: Color(hex: 0x0A84FF)) {
-            let choices = display.choices
-            if display.canSwitch, choices.count > 1 {
-                Picker("分辨率", selection: Binding(get: { current.id }, set: { id in
-                    if let mode = choices.first(where: { $0.id == id }) { displays.choose(mode, on: display) }
-                })) {
-                    ForEach(choices) { mode in Text(modeLabel(mode, current: current)).tag(mode.id) }
+        else if hiDPI == .off { subtitle = [current.size, current.rate, "开启 HiDPI 后文字更清晰，大小可调"].filter { !$0.isEmpty }.joined(separator: " · ") }
+        // 开关只表示“系统里有没有 HiDPI 档位”；当前是否在用 HiDPI 由副标题说明（选原生分辨率时就没在用）
+        else { subtitle = [current.hiDPI ? "HiDPI" : nil, current.size, current.rate.isEmpty ? nil : current.rate,
+                           !current.hiDPI && display.hasHiDPIChoices ? "未使用 HiDPI" : nil].compactMap { $0 }.joined(separator: " · ") }
+        return VStack(alignment: .leading, spacing: 0) {
+            row(p, display.isMain ? "\(display.name)（主屏）" : display.name, subtitle,
+                icon: display.builtIn ? "laptopcomputer" : "display", tint: Color(hex: 0x0A84FF)) {
+                if hiDPI != .none {
+                    HStack(spacing: 8) {
+                        Text("HiDPI 支持").font(Typo.body).foregroundStyle(p.text2)
+                        Toggle2(isOn: hiDPI == .on) { setHiDPI($0, on: display) }
+                    }
+                    .disabled(displays.busy)
+                } else if let note = hiDPINote(display) {
+                    // 没有开关的屏幕也说明一下原因，免得让人以为功能缺了
+                    Text(note).font(Typo.caption).foregroundStyle(p.text3)
                 }
-                .labelsHidden()
-                .pickerStyle(.menu)
-                .frame(width: 220)
-                .disabled(displays.busy)
-            } else {
-                Text(modeLabel(current, current: current)).font(Typo.body).foregroundStyle(p.text2)
             }
+            if showSizes { sizePicker(p, display, options) }
         }
     }
 
-    /// 外接屏：没有 HiDPI 档位时可以添加；islet 添加过的可以移除。别的工具写的配置不显示操作。
-    @ViewBuilder private func hiDPIRow(_ p: Palette, _ display: DisplayManager.Display) -> some View {
-        if display.canSwitch, let status = displays.overrides[display.id], status.external {
-            if status.owned {
-                divider(p)
-                row(p, "islet 添加的 HiDPI 档位", status.sizes.joined(separator: "、"), icon: "plus.rectangle.on.rectangle", tint: Color(hex: 0x30D158)) {
-                    PlainButton(title: "移除…") {
-                        guard confirmAlert("移除 islet 添加的 HiDPI 档位？",
-                                           "需要输入管理员密码。移除后这块屏会断开再接上一次，回到系统自带的分辨率。") else { return }
-                        displays.removeHiDPI(display)
-                    }
-                    .disabled(displays.busy)
-                }
-            } else if !status.installed, !display.hasHiDPIChoices, !status.sizes.isEmpty {
-                divider(p)
-                row(p, "添加 HiDPI 档位", status.sizes.joined(separator: "、"), icon: "plus.rectangle.on.rectangle", tint: Color(hex: 0x30D158)) {
-                    PlainButton(title: "添加…", prominent: true) {
-                        guard confirmAlert("为 \(display.name) 添加 HiDPI 档位？",
-                                           "需要输入管理员密码，在系统里为这块屏写一份显示配置。添加后屏幕会断开再接上一次，之后在分辨率里选择新档位。随时可以移除。") else { return }
-                        displays.addHiDPI(display)
-                    }
-                    .disabled(displays.busy)
-                }
-            }
+    /// 没有 HiDPI 开关时，右侧显示的说明。
+    private func hiDPINote(_ display: DisplayManager.Display) -> String? {
+        guard display.canSwitch else { return nil }
+        if display.builtIn || display.hasHiDPIChoices { return "系统已支持 HiDPI" }
+        if displays.overrides[display.id]?.installed == true { return "已有其他工具的显示配置" }
+        return nil
+    }
+
+    private func setHiDPI(_ on: Bool, on display: DisplayManager.Display) {
+        if on {
+            guard confirmAlert("为 \(display.name) 开启 HiDPI？",
+                               "需要输入管理员密码，为这块屏写一份显示配置，补上系统没有的 HiDPI 档位（只写入或删除 islet 自己的配置）。开启后屏幕会断开再接上一次，然后切到推荐的大小。随时可以关掉。") else { return }
+            displays.addHiDPI(display)
+        } else {
+            guard confirmAlert("关闭 \(display.name) 的 HiDPI？",
+                               "需要输入管理员密码。关闭后这块屏会断开再接上一次，回到系统自带的分辨率。") else { return }
+            displays.removeHiDPI(display)
         }
     }
 
-    private func modeLabel(_ mode: DisplayManager.Mode, current: DisplayManager.Mode) -> String {
-        var label = mode.size + (mode.hiDPI ? " · HiDPI" : mode.native ? " · 原生" : "")
-        if !mode.rate.isEmpty, mode.rate != current.rate { label += " · \(mode.rate)" }
-        return label
+    /// 一排档位卡片：原生在最左，往右文字越来越大。每张卡片依次是分辨率、文字说明、界面放大比例（次要）。
+    /// 默认只列核心的几档，其余收在“更多分辨率”里。
+    private func sizePicker(_ p: Palette, _ display: DisplayManager.Display, _ options: [DisplayManager.Mode]) -> some View {
+        let expanded = displays.expanded.contains(display.id)
+        let hidden = display.allSizes.count - display.sizeOptions.count
+        return VStack(alignment: .trailing, spacing: 6) {
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: 5), spacing: 6) {
+                ForEach(options) { mode in
+                    let selected = mode.group == display.current.group
+                    let label = display.label(mode)
+                    let highlight = label == "推荐" || label == "默认"
+                    Button { displays.choose(mode, on: display) } label: {
+                        VStack(spacing: 3) {
+                            Text(mode.size).font(.system(size: 13, weight: .semibold)).monospacedDigit()
+                                .foregroundStyle(selected ? p.accentText : p.text)
+                                .lineLimit(1).minimumScaleFactor(0.7)
+                            Text(label).font(Typo.caption)
+                                .foregroundStyle(selected || highlight ? p.accentText : p.text2)
+                            Text(display.scale(mode)).font(.system(size: 10)).monospacedDigit()
+                                .foregroundStyle(p.text3.opacity(0.7))
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 9).padding(.horizontal, 4)
+                        .background(RoundedRectangle(cornerRadius: 8).fill(selected ? p.accentFill.opacity(0.14) : p.inset))
+                        .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(selected ? p.accentFill.opacity(0.6) : .clear, lineWidth: 1.5))
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("\(mode.size)，\(label)，界面 \(display.scale(mode))")
+                }
+            }
+            if hidden > 0 {
+                Button(expanded ? "收起" : "更多分辨率（\(hidden)）") {
+                    displays.toggleExpanded(display.id)
+                }
+                .buttonStyle(.plain).font(Typo.caption).foregroundStyle(p.accentText)
+            }
+        }
+        .padding(.leading, 42)
+        .padding(.top, 10)
+        .padding(.bottom, 8)
+        .disabled(displays.busy)
     }
 
     private var updateTitle: String {
@@ -1068,19 +1102,6 @@ struct SettingsView: View {
                 .fixedSize()
             }
         }
-        section(p, "备份") {
-            row(p, "导出设置", "保存为文件，换电脑或重装时导入", icon: "square.and.arrow.up", tint: Color(hex: 0x0A84FF)) {
-                PlainButton(title: "导出…") { SettingsTransfer.export() }
-            }
-            divider(p)
-            row(p, "导入设置", "覆盖当前设置，程序会重新启动", icon: "square.and.arrow.down", tint: Color(hex: 0x30D158)) {
-                PlainButton(title: "导入…") {
-                    guard confirmAlert("导入设置？", "当前设置会被文件里的设置覆盖，程序随后重新启动。") else { return }
-                    if !SettingsTransfer.importSettings() { NSSound.beep() }
-                }
-            }
-        }
-
     }
 
     /// 打赏二维码（随程序打包在 Resources 里）。

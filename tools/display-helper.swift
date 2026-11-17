@@ -54,12 +54,22 @@ func nativeSize(_ display: CGDirectDisplayID) -> (width: Int, height: Int)? {
     return pick.map { ($0.width, $0.height) }
 }
 
-/// HiDPI 档位：原生分辨率的 1/2、2/3、3/4、4/5，保持原来的宽高比，宽高都取偶数。
+/// HiDPI 档位：UI 放大 200%、160%、142.9%、133.3%、125%、114.3%、111.1%（相对原生）。
+/// 尽量取与原生严格等比例的尺寸（宽高都是偶数），不会有黑边或变形；凑不出来时按宽度取最接近的偶数。
 func scaledSizes(native: (width: Int, height: Int)) -> [(width: Int, height: Int)] {
+    func gcd(_ a: Int, _ b: Int) -> Int { b == 0 ? a : gcd(b, a % b) }
+    let g = max(gcd(native.width, native.height), 1)
+    let unitW = native.width / g, unitH = native.height / g
+    let step = unitW % 2 == 0 && unitH % 2 == 0 ? 1 : 2   // 单位尺寸有奇数时，倍数取偶数，宽高才都是偶数
     var seen = Set<String>()
-    return [2.0, 1.5, 4.0 / 3.0, 1.25].compactMap { factor in
-        let width = Int((Double(native.width) / factor / 2).rounded()) * 2
-        let height = Int((Double(width) * Double(native.height) / Double(native.width) / 2).rounded()) * 2
+    return [2.0, 1.6, 10.0 / 7.0, 4.0 / 3.0, 1.25, 8.0 / 7.0, 10.0 / 9.0].compactMap { factor in
+        let target = Double(native.width) / factor
+        let k = Int((target / Double(unitW * step)).rounded()) * step
+        var width = unitW * k, height = unitH * k
+        if k <= 0 || abs(Double(width) / target - 1) > 0.02 {
+            width = Int((target / 2).rounded()) * 2
+            height = Int((Double(width) * Double(native.height) / Double(native.width) / 2).rounded()) * 2
+        }
         // 渲染尺寸（逻辑尺寸的 2 倍）太大会拖慢显卡：超过 8K 的不加
         guard width * 2 <= 7680, height * 2 <= 4320, seen.insert("\(width)x\(height)").inserted else { return nil }
         return (width, height)
@@ -194,6 +204,19 @@ case "reconnect":
           let symbol = dlsym(library, "SLSConfigureDisplayEnabled") else { fail("本机不支持用软件重新连接，请手动重新插拔这块屏") }
     typealias ConfigureEnabled = @convention(c) (CGDisplayConfigRef, CGDirectDisplayID, Bool) -> Int32
     let configureEnabled = unsafeBitCast(symbol, to: ConfigureEnabled.self)
+    // 正在用 HiDPI 档位时先正常切回原生分辨率，再断开：否则档位在重连时凭空消失，分辨率和缩放倍数一下子跳变，
+    // 再按旧尺寸恢复排列，窗口拖动会和鼠标对不上。切换后系统会自己重排，下面记录的就是新位置。
+    if let current = CGDisplayCopyDisplayMode(id), current.pixelWidth > current.width {
+        let natives = allModes(id).filter { $0.pixelWidth == $0.width && $0.isUsableForDesktopGUI() }
+        let flagged = natives.filter { $0.ioFlags & UInt32(0x02000000) != 0 }   // kDisplayModeNativeFlag
+        let candidates = flagged.isEmpty ? natives : flagged
+        let largest = candidates.map { $0.width * $0.height }.max() ?? 0
+        if let native = candidates.filter({ $0.width * $0.height == largest })
+            .min(by: { abs($0.refreshRate - current.refreshRate) < abs($1.refreshRate - current.refreshRate) }),
+           configure(id, mode: native, option: .permanently) {
+            Thread.sleep(forTimeInterval: 0.8)
+        }
+    }
     let origins = displays.filter { CGDisplayIsActive($0) != 0 }.map { ($0, CGDisplayBounds($0).origin) }
     func setEnabled(_ enabled: Bool) -> Bool {
         var transaction: CGDisplayConfigRef?
