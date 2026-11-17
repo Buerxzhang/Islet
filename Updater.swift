@@ -1,129 +1,103 @@
 import AppKit
 import CryptoKit
 
-/// 应用内更新：弹窗询问 → 下载 Release 里的 islet.zip（显示进度）→ 核对 SHA-256、包标识、版本和签名
+/// 应用内更新：在设置“关于”页里显示说明和进度 → 下载 Release 里的 islet.zip → 核对 SHA-256、包标识、版本和签名
 /// → 退出后替换「应用程序」里的 islet 并重新打开。任何一步失败都不动现有程序，可改为打开下载页。
-final class Updater: NSObject, URLSessionDownloadDelegate {
+final class Updater: NSObject, ObservableObject, URLSessionDownloadDelegate {
     static let shared = Updater()
 
-    private var busy = false
-    private var progress: (alert: NSAlert, bar: NSProgressIndicator)?
-    private var downloaded: URL?
-    private var failure: String?
-
-    // MARK: 询问
-
-    /// 有新版本时弹窗。automatic：自动检查触发的，选过“跳过这个版本”就不再弹。
-    func prompt(_ release: UpdateChecker.Release, automatic: Bool = false) {
-        guard !busy else { return }
-        if automatic, UserDefaults.standard.string(forKey: "skippedUpdateVersion") == release.version { return }
-        busy = true
-        defer { busy = false }
-        let alert = NSAlert()
-        alert.messageText = "islet \(release.version) 可以更新"
-        alert.informativeText = "当前是 \(UpdateChecker.currentVersion)。"
-        if !release.notes.isEmpty { alert.accessoryView = Self.notesView(release.notes) }
-        alert.addButton(withTitle: release.download == nil ? "打开下载页" : "更新并重启")
-        alert.addButton(withTitle: "稍后")
-        if automatic { alert.addButton(withTitle: "跳过这个版本") }
-        NSApp.activate()
-        switch alert.runModal() {
-        case .alertFirstButtonReturn:
-            if release.download == nil { NSWorkspace.shared.open(release.url) } else { update(release) }
-        case .alertThirdButtonReturn:
-            UserDefaults.standard.set(release.version, forKey: "skippedUpdateVersion")
-        default: break
-        }
+    enum Phase: Equatable {
+        case idle
+        case downloading(Double, String)   // 进度 0…1、“1.5 / 3.0 MB”
+        case ready(app: URL, folder: URL)  // 已下载、解压并核对，等用户点“重启”
+        case failed(String)
     }
+    @Published private(set) var phase = Phase.idle
+    private var session: URLSession?
+    private var release: UpdateChecker.Release?
 
-    /// 更新说明：去掉 Markdown 记号，放进可滚动的文本框。
-    private static func notesView(_ markdown: String) -> NSView {
-        // 「升级」一节是给 GitHub 下载页看的（怎么下载、系统要求），弹窗里已经在更新了，不显示
+    /// 更新说明转成纯文字：去掉 Markdown 记号；「升级」一节是给 GitHub 下载页看的（怎么下载、系统要求），不显示。
+    static func plainNotes(_ markdown: String) -> String {
         var lines = markdown.split(separator: "\n", omittingEmptySubsequences: false)
         if let start = lines.firstIndex(where: { $0.hasPrefix("#") && $0.contains("升级") }) {
             let end = lines[(start + 1)...].firstIndex { $0.hasPrefix("#") } ?? lines.endIndex
             lines.removeSubrange(start..<end)
         }
-        let text = lines.map { line -> String in
+        return lines.map { line -> String in
             var line = String(line).replacingOccurrences(of: "**", with: "").replacingOccurrences(of: "`", with: "")
             while line.hasPrefix("#") { line.removeFirst() }
             if line.hasPrefix("- ") { line = "• " + line.dropFirst(2) }
             return line.trimmingCharacters(in: .whitespaces)
         }.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
-        let scroll = NSTextView.scrollableTextView()
-        scroll.frame = NSRect(x: 0, y: 0, width: 360, height: 200)
-        scroll.borderType = .bezelBorder
-        if let view = scroll.documentView as? NSTextView {
-            view.string = text
-            view.isEditable = false
-            view.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
-            view.textContainerInset = NSSize(width: 4, height: 6)
-        }
-        return scroll
     }
 
     // MARK: 下载
 
-    private func update(_ release: UpdateChecker.Release) {
-        guard let url = release.download else { return }
-        downloaded = nil
-        failure = nil
-        let alert = NSAlert()
-        alert.messageText = "正在下载 islet \(release.version)"
-        alert.informativeText = "下载完成后会自动替换并重新打开。"
-        let bar = NSProgressIndicator(frame: NSRect(x: 0, y: 0, width: 300, height: 20))
-        bar.isIndeterminate = false
-        bar.minValue = 0
-        bar.maxValue = 1
-        alert.accessoryView = bar
-        alert.addButton(withTitle: "取消")
-        progress = (alert, bar)
-        let session = URLSession(configuration: .ephemeral, delegate: self, delegateQueue: .main)
-        let task = session.downloadTask(with: url)
-        task.resume()
-        let response = alert.runModal()   // 下载结束时 abortModal 返回；点“取消”返回第一个按钮
-        progress = nil
-        session.invalidateAndCancel()
-        if response == .alertFirstButtonReturn { return }
-        do {
-            guard let zip = downloaded else { throw UpdateError(failure ?? "下载没有完成") }
-            try install(zip, release)
-        } catch {
-            let alert = NSAlert()
-            alert.messageText = "没能自动更新"
-            alert.informativeText = "\((error as? UpdateError)?.message ?? error.localizedDescription)。现有的 islet 没有改动，可以到下载页手动更新。"
-            alert.addButton(withTitle: "打开下载页")
-            alert.addButton(withTitle: "关闭")
-            if alert.runModal() == .alertFirstButtonReturn { NSWorkspace.shared.open(release.url) }
-        }
+    /// 开始下载；没有安装包的版本直接打开下载页。
+    func start(_ release: UpdateChecker.Release) {
+        guard session == nil else { return }
+        guard let url = release.download else { NSWorkspace.shared.open(release.url); return }
+        self.release = release
+        phase = .downloading(0, "")
+        let session = URLSession(configuration: .ephemeral, delegate: self, delegateQueue: nil)
+        self.session = session
+        session.downloadTask(with: url).resume()
+    }
+
+    func cancel() {
+        session?.invalidateAndCancel()
+        session = nil
+        if case .ready(_, let folder) = phase { try? FileManager.default.removeItem(at: folder) }
+        phase = .idle
+    }
+
+    private func fail(_ message: String) {
+        session?.invalidateAndCancel()
+        session = nil
+        phase = .failed(message)
     }
 
     func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didWriteData bytesWritten: Int64,
                     totalBytesWritten: Int64, totalBytesExpectedToWrite: Int64) {
-        guard let progress, totalBytesExpectedToWrite > 0 else { return }
-        progress.bar.doubleValue = Double(totalBytesWritten) / Double(totalBytesExpectedToWrite)
-        progress.alert.informativeText = String(format: "%.1f / %.1f MB", Double(totalBytesWritten) / 1_048_576,
-                                                Double(totalBytesExpectedToWrite) / 1_048_576)
+        guard totalBytesExpectedToWrite > 0 else { return }
+        let fraction = Double(totalBytesWritten) / Double(totalBytesExpectedToWrite)
+        let text = String(format: "%.1f / %.1f MB", Double(totalBytesWritten) / 1_048_576, Double(totalBytesExpectedToWrite) / 1_048_576)
+        DispatchQueue.main.async { [weak self] in
+            guard let self, self.session === session else { return }
+            self.phase = .downloading(fraction, text)
+        }
     }
 
     func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didFinishDownloadingTo location: URL) {
         // 临时文件在这个回调返回后就会被删：先挪走
-        guard (downloadTask.response as? HTTPURLResponse)?.statusCode == 200 else {
-            failure = "下载失败（服务器返回 \((downloadTask.response as? HTTPURLResponse)?.statusCode ?? 0)）"
-            return
-        }
+        let status = (downloadTask.response as? HTTPURLResponse)?.statusCode ?? 0
         let target = FileManager.default.temporaryDirectory.appendingPathComponent("islet-update-\(UUID().uuidString).zip")
-        do {
-            try FileManager.default.moveItem(at: location, to: target)
-            downloaded = target
-        } catch {
-            failure = "保存下载的文件失败"
+        let moved = status == 200 && (try? FileManager.default.moveItem(at: location, to: target)) != nil
+        DispatchQueue.main.async { [weak self] in
+            guard let self, self.session === session, let release = self.release else { return }
+            guard status == 200 else { self.fail("下载失败（服务器返回 \(status)）"); return }
+            guard moved else { self.fail("保存下载的文件失败"); return }
+            self.session = nil
+            self.phase = .downloading(1, "正在核对…")
+            // 解压、核对签名要一两秒：放到后台，界面不卡
+            DispatchQueue.global(qos: .userInitiated).async {
+                let result = Result { try Self.prepare(target, release) }
+                DispatchQueue.main.async {
+                    switch result {
+                    case .success(let ready): self.phase = .ready(app: ready.app, folder: ready.folder)
+                    case .failure(let error): self.fail((error as? UpdateError)?.message ?? error.localizedDescription)
+                    }
+                }
+            }
         }
     }
 
     func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
-        if let error, (error as? URLError)?.code != .cancelled { failure = "下载失败：\(error.localizedDescription)" }
-        if progress != nil { NSApp.abortModal() }
+        guard let error, (error as? URLError)?.code != .cancelled else { return }
+        DispatchQueue.main.async { [weak self] in
+            guard let self, self.session === session else { return }
+            self.fail("下载失败：\(error.localizedDescription)")
+        }
     }
 
     // MARK: 安装
@@ -133,8 +107,8 @@ final class Updater: NSObject, URLSessionDownloadDelegate {
         init(_ message: String) { self.message = message }
     }
 
-    /// 核对下载的包，没问题就退出 islet，由一个小脚本等它退出后替换并重新打开。
-    private func install(_ zip: URL, _ release: UpdateChecker.Release) throws {
+    /// 核对下载的包：完整、是 islet、版本更新、签名完整、能写入现在的位置。返回解压出的新版。
+    private static func prepare(_ zip: URL, _ release: UpdateChecker.Release) throws -> (app: URL, folder: URL) {
         let fileManager = FileManager.default
         // 1. 文件完整：和 GitHub 记录的 SHA-256 一致
         if let digest = release.digest {
@@ -160,7 +134,14 @@ final class Updater: NSObject, URLSessionDownloadDelegate {
         guard fileManager.isWritableFile(atPath: current.deletingLastPathComponent().path) else {
             throw UpdateError("没有权限写入 \(current.deletingLastPathComponent().path)")
         }
-        // 4. 退出后替换：先把旧版挪到备份，新版放进去；放不进去就把旧版挪回来。最后重新打开
+        return (app, folder)
+    }
+
+    /// 退出 islet，由一个小脚本等它退出后替换并重新打开。
+    func relaunch() {
+        guard case .ready(let app, let folder) = phase else { return }
+        let current = Bundle.main.bundleURL
+        // 退出后替换：先把旧版挪到备份，新版放进去；放不进去就把旧版挪回来。最后重新打开
         let script = """
         while kill -0 "$1" 2>/dev/null; do sleep 0.2; done
         backup="$2.update-backup"
@@ -174,7 +155,7 @@ final class Updater: NSObject, URLSessionDownloadDelegate {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/bin/sh")
         process.arguments = ["-c", script, "sh", String(ProcessInfo.processInfo.processIdentifier), current.path, app.path, folder.path]
-        try process.run()
+        do { try process.run() } catch { fail("没能重新打开：\(error.localizedDescription)"); return }
         NSApp.terminate(nil)
     }
 

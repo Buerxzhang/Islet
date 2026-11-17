@@ -464,7 +464,7 @@ enum UpdateChecker {
     }
     enum State: Equatable { case idle, checking, latest, available(Release), failed }
 
-    /// 自动检查（每天最多一次，有新版本时弹窗，选过“跳过这个版本”的不再弹）。
+    /// 自动检查（每天最多一次，有新版本时打开设置的“关于”页，选过“跳过这个版本”的不再打开）。
     static var autoCheck: Bool { UserDefaults.standard.object(forKey: "autoCheckUpdates") as? Bool ?? true }
     static var currentVersion: String { Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0" }
 
@@ -498,6 +498,9 @@ enum UpdateChecker {
         }.resume()
     }
 
+    /// 自动检查发现新版本时调用（打开设置的“关于”页）。
+    static var onFound: ((Release) -> Void)?
+
     /// 手动检查（关于页的按钮）。
     static func check(_ completion: @escaping (State) -> Void) {
         completion(.checking)
@@ -516,8 +519,9 @@ enum UpdateChecker {
         fetchLatest { release in
             guard let release else { return }   // 失败不记时间，下次再试
             UserDefaults.standard.set(Date(), forKey: "lastUpdateCheck")
-            guard isNewer(release.version, than: currentVersion) else { return }
-            Updater.shared.prompt(release, automatic: true)
+            guard isNewer(release.version, than: currentVersion),
+                  UserDefaults.standard.string(forKey: "skippedUpdateVersion") != release.version else { return }
+            onFound?(release)
         }
     }
 }

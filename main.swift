@@ -440,6 +440,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         scheduleLeftmost(after: 3)   // 启动时也排到最左
         AlertCenter.shared.prepare()
         // 检查更新：启动 30 秒后一次，之后每 6 小时看一眼（距上次检查不满一天会跳过）
+        UpdateChecker.onFound = { [weak self] release in
+            self?.settingsModel.update = .available(release)
+            self?.openSettings(page: .about)
+        }
         DispatchQueue.main.asyncAfter(deadline: .now() + 30) { UpdateChecker.checkInBackground() }
         Timer.scheduledTimer(withTimeInterval: 6 * 3600, repeats: true) { _ in UpdateChecker.checkInBackground() }
         if UserDefaults.standard.bool(forKey: "keepAwakeOnLaunch") { KeepAwake.shared.set(.always) }
