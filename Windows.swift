@@ -1108,17 +1108,15 @@ struct SettingsView: View {
         .onAppear { if !flat { AppInfo.fetchStars { model.stars = $0 } } }
         section(p, "更新") {
             row(p, updateTitle, updateSubtitle, icon: "arrow.triangle.2.circlepath", tint: Color(hex: 0x0A84FF)) {
-                if case .available(let release) = model.update {
-                    PlainButton(title: "更新…", prominent: true) { Updater.shared.prompt(release) }
-                } else {
-                    PlainButton(title: model.update == .checking ? "检查中…" : "检查更新") {
-                        UpdateChecker.check { state in
-                            model.update = state
-                            if case .available(let release) = state { Updater.shared.prompt(release) }
-                        }
+                // 点“更新…”也重新查一次：发版后改过说明或又发了新版，弹窗里是最新的
+                let found: Bool = { if case .available = model.update { return true } else { return false } }()
+                PlainButton(title: model.update == .checking ? "检查中…" : found ? "更新…" : "检查更新", prominent: found) {
+                    UpdateChecker.check { state in
+                        model.update = state
+                        if case .available(let release) = state { Updater.shared.prompt(release) }
                     }
-                    .disabled(model.update == .checking)
                 }
+                .disabled(model.update == .checking)
             }
             divider(p)
             row(p, "自动检查更新", "每天一次，有新版本时弹窗", icon: "bell.badge", tint: Color(hex: 0xFF9F0A)) {
