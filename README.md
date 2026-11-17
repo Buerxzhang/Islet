@@ -7,11 +7,10 @@
 <p align="center">菜单栏里的灵动岛：系统指标、音乐频谱、蓝牙电量，一眼看全。</p>
 
 <p align="center">
+  <a href="https://github.com/Buerxzhang/islet/releases/latest"><img alt="Download" src="https://img.shields.io/github/v/release/Buerxzhang/islet?label=download&logo=apple&logoColor=white&color=2ea44f"></a>
   <img alt="macOS" src="https://img.shields.io/badge/macOS-14%2B-black">
   <img alt="Apple Silicon & Intel" src="https://img.shields.io/badge/Apple%20Silicon%20%26%20Intel-universal-blue">
-  <a href="https://github.com/Buerxzhang/islet/releases"><img alt="Release" src="https://img.shields.io/github/v/release/Buerxzhang/islet"></a>
   <a href="https://github.com/Buerxzhang/islet/stargazers"><img alt="Stars" src="https://img.shields.io/github/stars/Buerxzhang/islet?style=social"></a>
-  <a href="https://github.com/Buerxzhang/islet/releases/latest"><img alt="下载最新版" src="https://img.shields.io/badge/%E4%B8%8B%E8%BD%BD-%E6%9C%80%E6%96%B0%E7%89%88-2ea44f?logo=apple&logoColor=white"></a>
 </p>
 
 <p align="center">
@@ -209,7 +208,7 @@ islet 启动时，如果检测到任意一块启用的屏幕有刘海，默认�
 - 登录时启动；菜单栏刷新频率可选 1、2、3 秒，越快越耗电。
 - 「恢复默认设置」会重置 islet 的偏好并重启，流量统计、显示器配置和系统权限保留。
 - 诊断：「关于」页可以复制一份诊断报告（机型、系统、传感器、风扇状态等），点「反馈问题」时会自动复制，到 GitHub 粘贴即可。
-- 应用内更新：每天最多自动检查一次 GitHub 上的新版本，有新版本时弹窗显示更新说明，可以直接下载、替换并重启，也可以跳过这个版本；「关于」页可以手动检查。下载后会核对校验和与签名，任何一步失败都不会动现有程序。
+- 应用内更新：在「关于」页完成，不弹窗。每天最多自动检查一次 GitHub，有新版本时打开「关于」页显示更新说明；点「下载更新」后能看到进度，下载好再点「重启以完成更新」，什么时候重启由你决定，也可以跳过这个版本。下载后会核对校验和与签名，任何一步失败都不会动现有程序。
 
 ## 安装
 
@@ -228,7 +227,7 @@ islet 启动时，如果检测到任意一块启用的屏幕有刘海，默认�
 | 屏幕录制（可选） | 帧率：只统计屏幕画面变化的次数，不保存、不上传画面 |
 | 管理员密码（可选） | 安装风扇调速组件；为外接屏添加或移除 HiDPI 档位 |
 
-> 从旧版升级时，先退出旧应用并把它移出「应用程序」，再放入新版。设置和历史会沿用，macOS 可能要求重新授权。
+> 1.3.1 及以后的版本可以直接在「关于」页更新。更早的版本手动升级：先退出旧应用并把它移出「应用程序」，再放入新版。设置和历史会沿用，macOS 可能要求重新授权。
 >
 > 风扇调速要求 islet 放在「应用程序」文件夹里。旧版用户需在设置里重新安装风扇组件，安装时会移除旧组件。
 
