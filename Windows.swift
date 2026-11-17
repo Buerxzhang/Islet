@@ -278,6 +278,16 @@ struct SettingsView: View {
     /// 走查用：不包 ScrollView（离屏渲染画不出滚动视图的内容）。
     var flat = false
 
+    private final class DisplayCardHover: ObservableObject {
+        struct Card: Equatable {
+            let displayID: CGDirectDisplayID
+            let modeID: Int32
+        }
+        @Published var card: Card?
+    }
+
+    @StateObject private var displayCardHover = DisplayCardHover()
+
     var body: some View {
         Themed { p in
             HStack(spacing: 0) {
@@ -927,12 +937,17 @@ struct SettingsView: View {
         // 没开 HiDPI 且正用原生分辨率时不列大小（只剩一个“原生的一半”，没什么可选）
         let showSizes = display.canSwitch && options.count > 1 && !(hiDPI == .off && current.native && !current.hiDPI)
         let subtitle: String
-        if !display.active { subtitle = "未启用" }
-        else if display.mirrored { subtitle = "镜像中，解除镜像后可以单独调整" }
-        else if hiDPI == .off { subtitle = [current.size, current.rate, "开启 HiDPI 后文字更清晰，大小可调"].filter { !$0.isEmpty }.joined(separator: " · ") }
-        // 开关只表示“系统里有没有 HiDPI 档位”；当前是否在用 HiDPI 由副标题说明（选原生分辨率时就没在用）
-        else { subtitle = [current.hiDPI ? "HiDPI" : nil, current.size, current.rate.isEmpty ? nil : current.rate,
-                           !current.hiDPI && display.hasHiDPIChoices ? "未使用 HiDPI" : nil].compactMap { $0 }.joined(separator: " · ") }
+        if !display.active {
+            subtitle = "未启用"
+        } else {
+            let mode = "\(current.size) \(current.hiDPI ? "HiDPI" : "普通")"
+            let details = [mode, current.rate].filter { !$0.isEmpty }.joined(separator: " · ")
+            // 第二行：镜像时说明为什么不能调；没开 HiDPI 时说明开关的作用；用 HiDPI 时给出实际渲染尺寸（普通模式等于分辨率，不重复）
+            let note = display.mirrored ? "镜像中，解除镜像后可以单独调整"
+                : hiDPI == .off ? "开启 HiDPI 后文字更清晰，大小可调"
+                : current.hiDPI ? renderNote(current, display) : nil
+            subtitle = note.map { "\(details)\n\($0)" } ?? details
+        }
         return VStack(alignment: .leading, spacing: 0) {
             row(p, display.isMain ? "\(display.name)（主屏）" : display.name, subtitle,
                 icon: display.builtIn ? "laptopcomputer" : "display", tint: Color(hex: 0x0A84FF)) {
@@ -959,6 +974,14 @@ struct SettingsView: View {
         return nil
     }
 
+    /// HiDPI 的渲染说明：渲染尺寸比屏幕像素大时要再缩小显示，提醒会多占 GPU；正好等于屏幕像素时最省也最清晰。
+    private func renderNote(_ mode: DisplayManager.Mode, _ display: DisplayManager.Display) -> String {
+        guard let native = display.native, mode.pixelWidth > native.width + 8 else {
+            return "按屏幕原生像素绘制，最清晰"
+        }
+        return "比原生更费显卡（实际按 \(mode.renderingSize) 绘制）"
+    }
+
     private func setHiDPI(_ on: Bool, on display: DisplayManager.Display) {
         if on {
             guard confirmAlert("为 \(display.name) 开启 HiDPI？",
@@ -982,6 +1005,9 @@ struct SettingsView: View {
                     let selected = mode.group == display.current.group
                     let label = display.label(mode)
                     let highlight = label == "推荐" || label == "默认"
+                    let card = DisplayCardHover.Card(displayID: display.id, modeID: mode.id)
+                    let hovered = displayCardHover.card == card && !displays.busy
+                    let rendering = "实际绘制 \(mode.renderingSize)"
                     Button { displays.choose(mode, on: display) } label: {
                         VStack(spacing: 3) {
                             Text(mode.size).font(.system(size: 13, weight: .semibold)).monospacedDigit()
@@ -989,8 +1015,12 @@ struct SettingsView: View {
                                 .lineLimit(1).minimumScaleFactor(0.7)
                             Text(label).font(Typo.caption)
                                 .foregroundStyle(selected || highlight ? p.accentText : p.text2)
-                            Text(display.scale(mode)).font(.system(size: 10)).monospacedDigit()
-                                .foregroundStyle(p.text3.opacity(0.7))
+                                .lineLimit(1).minimumScaleFactor(0.8)
+                            // 悬停时只把放大比例换成实际渲染尺寸，说明文字不动，扫过一排时不晃
+                            Text(hovered ? rendering : display.scale(mode))
+                                .font(.system(size: 10)).monospacedDigit()
+                                .foregroundStyle(hovered ? p.text2 : p.text3.opacity(0.7))
+                                .lineLimit(1).minimumScaleFactor(0.7)
                         }
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 9).padding(.horizontal, 4)
@@ -999,7 +1029,14 @@ struct SettingsView: View {
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
-                    .accessibilityLabel("\(mode.size)，\(label)，界面 \(display.scale(mode))")
+                    .onHover { inside in
+                        if inside {
+                            displayCardHover.card = card
+                        } else if displayCardHover.card == card {
+                            displayCardHover.card = nil
+                        }
+                    }
+                    .accessibilityLabel("\(mode.size)，\(label)，界面 \(display.scale(mode))，\(rendering)")
                 }
             }
             if hidden > 0 {
@@ -1027,7 +1064,7 @@ struct SettingsView: View {
         switch model.update {
         case .checking: return "正在查询 GitHub…"
         case .failed: return "检查失败，请检查网络后再试"
-        case .available: return "当前是 \(UpdateChecker.currentVersion)，下载后替换「应用程序」里的 islet"
+        case .available: return "当前是 \(UpdateChecker.currentVersion)，可以直接更新并重启"
         case .latest: return "当前版本 \(UpdateChecker.currentVersion)"
         case .idle: return "从 GitHub 查询是否有新版本"
         }
@@ -1076,16 +1113,19 @@ struct SettingsView: View {
         section(p, "更新") {
             row(p, updateTitle, updateSubtitle, icon: "arrow.triangle.2.circlepath", tint: Color(hex: 0x0A84FF)) {
                 if case .available(let release) = model.update {
-                    PlainButton(title: "下载", prominent: true) { NSWorkspace.shared.open(release.url) }
+                    PlainButton(title: "更新…", prominent: true) { Updater.shared.prompt(release) }
                 } else {
                     PlainButton(title: model.update == .checking ? "检查中…" : "检查更新") {
-                        UpdateChecker.check { model.update = $0 }
+                        UpdateChecker.check { state in
+                            model.update = state
+                            if case .available(let release) = state { Updater.shared.prompt(release) }
+                        }
                     }
                     .disabled(model.update == .checking)
                 }
             }
             divider(p)
-            row(p, "自动检查更新", "每天一次，有新版本时发通知", icon: "bell.badge", tint: Color(hex: 0xFF9F0A)) {
+            row(p, "自动检查更新", "每天一次，有新版本时弹窗", icon: "bell.badge", tint: Color(hex: 0xFF9F0A)) {
                 toggle("autoCheckUpdates", default: true)
             }
         }

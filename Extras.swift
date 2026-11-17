@@ -140,29 +140,6 @@ final class AlertCenter: NSObject, UNUserNotificationCenterDelegate {
         UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: id + UUID().uuidString, content: content, trigger: nil))
     }
 
-    /// 有新版本：点通知打开下载页。
-    func notifyUpdate(_ release: UpdateChecker.Release) {
-        let center = UNUserNotificationCenter.current()
-        center.delegate = self
-        center.requestAuthorization(options: [.alert, .sound]) { granted, _ in
-            guard granted else { return }
-            let content = UNMutableNotificationContent()
-            content.title = "islet \(release.version) 已发布"
-            content.body = "当前是 \(UpdateChecker.currentVersion)，点这里查看更新内容并下载。"
-            content.userInfo = ["url": release.url.absoluteString]
-            center.add(UNNotificationRequest(identifier: "update-\(release.version)", content: content, trigger: nil))
-        }
-    }
-
-    /// 点了通知：带网址的（新版本）打开网页。
-    func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse,
-                                withCompletionHandler completionHandler: @escaping () -> Void) {
-        if let link = response.notification.request.content.userInfo["url"] as? String, let url = URL(string: link) {
-            DispatchQueue.main.async { NSWorkspace.shared.open(url) }
-        }
-        completionHandler()
-    }
-
     /// 菜单栏程序不在前台：通知也照常弹出横幅。
     func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification,
                                 withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
@@ -476,12 +453,18 @@ struct BatteryInfo: Equatable {
 
 // MARK: - 关于
 
-/// 检查更新：查 GitHub 上最新的 Release，和当前版本比较。只查询、不下载，有新版本时打开下载页。
+/// 检查更新：查 GitHub 上最新的 Release，和当前版本比较。有新版本时交给 Updater 弹窗、下载并安装。
 enum UpdateChecker {
-    struct Release: Equatable { let version: String; let url: URL }
+    struct Release: Equatable {
+        let version: String
+        let url: URL          // Release 网页
+        var notes = ""        // 更新说明（Markdown）
+        var download: URL?    // islet.zip
+        var digest: String?   // islet.zip 的 SHA-256（十六进制）
+    }
     enum State: Equatable { case idle, checking, latest, available(Release), failed }
 
-    /// 自动检查（每天最多一次，有新版本时发一次通知）。
+    /// 自动检查（每天最多一次，有新版本时弹窗，选过“跳过这个版本”的不再弹）。
     static var autoCheck: Bool { UserDefaults.standard.object(forKey: "autoCheckUpdates") as? Bool ?? true }
     static var currentVersion: String { Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0" }
 
@@ -505,7 +488,11 @@ enum UpdateChecker {
             if (response as? HTTPURLResponse)?.statusCode == 200,
                let object = data.flatMap({ try? JSONSerialization.jsonObject(with: $0) }) as? [String: Any],
                let tag = object["tag_name"] as? String, let page = (object["html_url"] as? String).flatMap(URL.init(string:)) {
-                release = Release(version: tag.hasPrefix("v") ? String(tag.dropFirst()) : tag, url: page)
+                let zip = (object["assets"] as? [[String: Any]])?.first { ($0["name"] as? String)?.hasSuffix(".zip") == true }
+                release = Release(version: tag.hasPrefix("v") ? String(tag.dropFirst()) : tag, url: page,
+                                  notes: object["body"] as? String ?? "",
+                                  download: (zip?["browser_download_url"] as? String).flatMap(URL.init(string:)),
+                                  digest: (zip?["digest"] as? String).flatMap { $0.hasPrefix("sha256:") ? String($0.dropFirst(7)) : nil })
             }
             DispatchQueue.main.async { completion(release) }
         }.resume()
@@ -529,10 +516,8 @@ enum UpdateChecker {
         fetchLatest { release in
             guard let release else { return }   // 失败不记时间，下次再试
             UserDefaults.standard.set(Date(), forKey: "lastUpdateCheck")
-            guard isNewer(release.version, than: currentVersion),
-                  UserDefaults.standard.string(forKey: "notifiedUpdateVersion") != release.version else { return }
-            UserDefaults.standard.set(release.version, forKey: "notifiedUpdateVersion")
-            AlertCenter.shared.notifyUpdate(release)
+            guard isNewer(release.version, than: currentVersion) else { return }
+            Updater.shared.prompt(release, automatic: true)
         }
     }
 }

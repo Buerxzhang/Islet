@@ -32,6 +32,7 @@ final class DisplayManager: ObservableObject {
 
         var hiDPI: Bool { pixelWidth >= width * 2 && pixelHeight >= height * 2 }
         var size: String { "\(width)×\(height)" }
+        var renderingSize: String { "\(pixelWidth)×\(pixelHeight)" }
         /// 同一尺寸、同一清晰度算一档（不同刷新率合并）。
         var group: String { "\(size):\(hiDPI)" }
         var rate: String { hz > 0 ? String(format: "%g Hz", (hz * 100).rounded() / 100) : "" }
