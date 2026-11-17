@@ -136,9 +136,15 @@ enum IslandOrder {
         }
         var order: [String] = []
         for id in saved where standard.contains(id) && !order.contains(id) { order.append(id) }
-        // 新版本新增的项（如帧率）：插在蓝牙前面，而不是排到最后
+        // 新版本新增的项：帧率默认放在 GPU 右边，其他插在蓝牙前面。只在第一次出现时安排，之后用户可以随意拖动
         for id in standard where !order.contains(id) {
-            if let bluetooth = order.firstIndex(of: "bluetooth") { order.insert(id, at: bluetooth) } else { order.append(id) }
+            if id == "fps", let gpu = order.firstIndex(of: "gpu") {
+                order.insert(id, at: gpu + 1)
+            } else if let bluetooth = order.firstIndex(of: "bluetooth") {
+                order.insert(id, at: bluetooth)
+            } else {
+                order.append(id)
+            }
         }
         return order
     }
@@ -148,6 +154,6 @@ enum IslandOrder {
 
 /// 指标的顺序（从灵动岛顺序里取出指标）。
 enum MetricOrder {
-    static let standard: [Metric] = [.cpu, .gpu, .memory, .disk, .power, .temperature, .fan, .network, .fps]
+    static let standard: [Metric] = [.cpu, .gpu, .fps, .memory, .disk, .power, .temperature, .fan, .network]
     static var current: [Metric] { IslandOrder.items.compactMap { id in Metric.allCases.first { "\($0)" == id } } }
 }

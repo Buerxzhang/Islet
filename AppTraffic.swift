@@ -156,7 +156,7 @@ enum Metric: Int, CaseIterable {
         case .power: return "整机功耗"
         case .fan: return "风扇转速"
         case .temperature: return "CPU 温度"
-        case .fps: return "前台窗口帧率"
+        case .fps: return "屏幕帧率"
         }
     }
 

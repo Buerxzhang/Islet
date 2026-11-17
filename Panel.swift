@@ -257,7 +257,8 @@ struct PanelView: View {
             SectionHeader(title: "说明")
             Card(padding: 10) {
                 VStack(alignment: .leading, spacing: 6) {
-                    ForEach(["测的是前台窗口每秒画面变化的次数，最高等于屏幕刷新率。",
+                    ForEach(["统计前台窗口所在屏幕每秒画面变化的次数，islet 自己的岛和面板不计入。",
+                             "屏幕上任何地方在动都会算进去，比如角落里播放的视频。",
                              "画面静止时（暂停、停在菜单）数字会变低，不代表卡顿。",
                              "需要屏幕录制权限；只数画面变化，不保存、不上传画面。"], id: \.self) { line in
                         Text(line).font(Typo.caption).foregroundStyle(p.text2)

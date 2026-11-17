@@ -94,13 +94,13 @@ final class WindowManager {
 
 /// 设置窗口的分页（左侧导航）。
 enum SettingsPage: String, CaseIterable, Identifiable {
-    case menuBar, wallpaper, general, about
+    case menuBar, extensions, general, about
     static let bottom: [SettingsPage] = [.general, .about]
     var id: String { rawValue }
     var title: String {
         switch self {
         case .menuBar: return "灵动岛"
-        case .wallpaper: return "动态壁纸"
+        case .extensions: return "扩展功能"
         case .general: return "通用"
         case .about: return "关于"
         }
@@ -108,7 +108,7 @@ enum SettingsPage: String, CaseIterable, Identifiable {
     var symbol: String {
         switch self {
         case .menuBar: return "capsule.fill"
-        case .wallpaper: return "photo.fill"
+        case .extensions: return "puzzlepiece.extension.fill"
         case .general: return "gearshape.fill"
         case .about: return "info.circle.fill"
         }
@@ -116,7 +116,7 @@ enum SettingsPage: String, CaseIterable, Identifiable {
     var tint: Color {
         switch self {
         case .menuBar: return Color(hex: 0x5E5CE6)
-        case .wallpaper: return Color(hex: 0xBF5AF2)
+        case .extensions: return Color(hex: 0xBF5AF2)
         case .general: return Color(hex: 0x8E8E93)
         case .about: return Color(hex: 0xFF9F0A)
         }
@@ -184,8 +184,7 @@ final class SettingsModel: ObservableObject {
     }
 
     static func metricSetting(_ id: String) -> SpeedSetting? {
-        ["cpu": .cpuItem, "gpu": .gpuItem, "memory": .memoryItem, "disk": .diskItem, "power": .powerItem,
-         "temperature": .temperatureItem, "fan": .fanItem][id]
+        Metric.allCases.first { "\($0)" == id }?.setting
     }
     /// 显示组 + 分隔 + 未显示组，连成一条序列。
     var sequence: [String] {
@@ -213,8 +212,8 @@ final class SettingsModel: ObservableObject {
         let order = shown + hidden
         let visible = shown.contains(id)
         if order != islandOrder {
-            islandOrder = order
             IslandOrder.save(order)
+            islandOrder = IslandOrder.items
         }
         if visible != isVisible(id) { setVisible(id, visible) }
         onMetricOrder()
@@ -278,6 +277,8 @@ struct SettingsView: View {
     @ObservedObject var model: SettingsModel
     @ObservedObject var fanClient = FanHelperClient.shared
     @ObservedObject var wallpaper = WallpaperController.shared
+    @ObservedObject var smoothScroll = SmoothScrollController.shared
+    @ObservedObject var displays = DisplayManager.shared
     /// 走查用：不包 ScrollView（离屏渲染画不出滚动视图的内容）。
     var flat = false
 
@@ -286,7 +287,7 @@ struct SettingsView: View {
             HStack(spacing: 0) {
                 sidebar(p)
                 Rectangle().fill(p.separator).frame(width: 1)
-                Group {
+                VStack(spacing: 0) {
                     if flat { page(p) } else { ScrollView { page(p) } }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
@@ -339,7 +340,7 @@ struct SettingsView: View {
             switch model.page {
             case .general: generalPage(p)
             case .menuBar: menuBarPage(p)
-            case .wallpaper: wallpaperPage(p)
+            case .extensions: extensionsPage(p)
             case .about: aboutPage(p)
             }
         }
@@ -393,6 +394,15 @@ struct SettingsView: View {
                 Segmented(options: [(0, "3"), (1, "5"), (2, "8")],
                           selection: model.selection(.count)) { model.select(.count, $0) }
                     .frame(width: 170)
+            }
+        }
+        section(p, "重置") {
+            row(p, "恢复默认设置", "重置 islet 的应用偏好", icon: "arrow.uturn.backward.circle.fill", tint: Color(hex: 0x8E8E93)) {
+                PlainButton(title: "恢复默认…") {
+                    guard confirmAlert("恢复 islet 的默认设置？",
+                                       "islet 会重新启动。流量统计、macOS 的显示器配置和系统权限会保留。") else { return }
+                    model.onResetAll()
+                }
             }
         }
     }
@@ -674,11 +684,12 @@ struct SettingsView: View {
 
     /// 帧率：测量方式说明和屏幕录制权限。
     private func fpsDetail(_ p: Palette) -> some View {
-        detail(p) {
-            detailRow(p, "测量方式", "统计前台窗口每秒画面变化的次数；画面静止时数字会变低，最高不超过屏幕刷新率") { EmptyView() }
-            detailRow(p, "屏幕录制权限", CGPreflightScreenCaptureAccess() ? "已授权。只数画面变化，不保存、不上传画面" : "未授权：在系统设置里打开 islet 后重新启动 islet") {
-                PlainButton(title: CGPreflightScreenCaptureAccess() ? "已授权" : "打开权限设置…") {
-                    if !CGPreflightScreenCaptureAccess() { CGRequestScreenCaptureAccess() }
+        let authorized = CGPreflightScreenCaptureAccess()
+        return detail(p) {
+            detailRow(p, "测量方式", "统计前台窗口所在屏幕每秒画面变化的次数（islet 自己不算）；画面静止时数字会变低，最高不超过屏幕刷新率") { EmptyView() }
+            detailRow(p, "屏幕录制权限", authorized ? "已授权。只数画面变化，不保存、不上传画面" : "未授权：在系统设置里打开 islet 后重新启动 islet") {
+                PlainButton(title: authorized ? "已授权" : "打开权限设置…") {
+                    if !authorized { CGRequestScreenCaptureAccess() }
                     if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture") {
                         NSWorkspace.shared.open(url)
                     }
@@ -828,8 +839,38 @@ struct SettingsView: View {
         }
     }
 
-    @ViewBuilder private func wallpaperPage(_ p: Palette) -> some View {
-        section(p, "播放") {
+    @ViewBuilder private func extensionsPage(_ p: Palette) -> some View {
+        section(p, "鼠标滚动") {
+            row(p, "平滑滚动", smoothScroll.state.description, icon: "computermouse.fill", tint: Color(hex: 0x0A84FF)) {
+                Toggle2(isOn: smoothScroll.enabled, onChange: smoothScroll.setEnabled)
+            }
+            if smoothScroll.state == .permissionRequired || smoothScroll.state == .unavailable {
+                divider(p)
+                row(p, "辅助功能权限", "用来接管鼠标滚轮，只改变滚动的节奏", icon: "hand.raised.fill", tint: Color(hex: 0x8E8E93)) {
+                    PlainButton(title: "打开权限设置…", action: smoothScroll.openPermissionSettings)
+                }
+            }
+            if smoothScroll.enabled {
+                divider(p)
+                row(p, "滚动距离", "滚轮每转一格移动多远", icon: "arrow.up.and.down", tint: Color(hex: 0x30D158)) {
+                    Segmented(options: SmoothScrollController.Distance.allCases.map { ($0, $0.label) },
+                              selection: smoothScroll.options.distance, onSelect: smoothScroll.setDistance)
+                        .frame(width: 150)
+                }
+                divider(p)
+                row(p, "平滑程度", "越高越柔和，停下得越慢", icon: "waveform.path", tint: Color(hex: 0xFF9F0A)) {
+                    Segmented(options: SmoothScrollController.Smoothness.allCases.map { ($0, $0.label) },
+                              selection: smoothScroll.options.smoothness, onSelect: smoothScroll.setSmoothness)
+                        .frame(width: 150)
+                }
+                divider(p)
+                row(p, "反转滚动方向", "只影响鼠标滚轮，触控板不变", icon: "arrow.up.arrow.down", tint: Color(hex: 0x5E5CE6)) {
+                    Toggle2(isOn: smoothScroll.options.reverse, onChange: smoothScroll.setReverse)
+                }
+            }
+        }
+        displaysSection(p)
+        section(p, "动态壁纸") {
             row(p, "播放", "桌面持续播放", icon: "play.fill", tint: Color(hex: 0xBF5AF2)) {
                 Segmented(options: WallpaperMode.allCases.map { ($0, $0.label) },
                           selection: wallpaper.mode, onSelect: wallpaper.setMode)
@@ -852,6 +893,92 @@ struct SettingsView: View {
         Text("“仅纯桌面时”：只在看得到桌面时播放。4K 约多耗 1–3 W。")
             .font(Typo.caption).foregroundStyle(p.text3)
             .fixedSize(horizontal: false, vertical: true)
+    }
+
+    // MARK: 显示器
+
+    /// 每块屏一行：当前分辨率（可切换）；外接屏缺少 HiDPI 档位时可以添加，islet 添加过的可以移除。
+    private func displaysSection(_ p: Palette) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            section(p, "显示器") {
+                if displays.displays.isEmpty {
+                    Text("没有检测到显示器").font(Typo.caption).foregroundStyle(p.text3).padding(.vertical, 10)
+                }
+                ForEach(Array(displays.displays.enumerated()), id: \.element.id) { index, display in
+                    if index > 0 { divider(p) }
+                    displayRow(p, display)
+                    hiDPIRow(p, display)
+                }
+                if let message = displays.message {
+                    divider(p)
+                    Text(message).font(Typo.caption).foregroundStyle(p.text2)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, 8)
+                }
+            }
+            Text("HiDPI 档位用两倍像素渲染，文字更细腻。切换分辨率后 15 秒内不确认，会自动恢复原来的分辨率。")
+                .font(Typo.caption).foregroundStyle(p.text3).fixedSize(horizontal: false, vertical: true)
+        }
+        .onAppear { displays.refresh() }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didChangeScreenParametersNotification)) { _ in displays.refresh() }
+    }
+
+    private func displayRow(_ p: Palette, _ display: DisplayManager.Display) -> some View {
+        let current = display.current
+        let subtitle: String
+        if !display.active { subtitle = "未启用" }
+        else if display.mirrored { subtitle = "镜像中，解除镜像后可以单独调整" }
+        else { subtitle = [current.hiDPI ? "HiDPI" : nil, current.rate.isEmpty ? nil : current.rate].compactMap { $0 }.joined(separator: " · ") }
+        return row(p, display.isMain ? "\(display.name)（主屏）" : display.name, subtitle.isEmpty ? nil : subtitle,
+                   icon: display.builtIn ? "laptopcomputer" : "display", tint: Color(hex: 0x0A84FF)) {
+            let choices = display.choices
+            if display.canSwitch, choices.count > 1 {
+                Picker("分辨率", selection: Binding(get: { current.id }, set: { id in
+                    if let mode = choices.first(where: { $0.id == id }) { displays.choose(mode, on: display) }
+                })) {
+                    ForEach(choices) { mode in Text(modeLabel(mode, current: current)).tag(mode.id) }
+                }
+                .labelsHidden()
+                .pickerStyle(.menu)
+                .frame(width: 220)
+                .disabled(displays.busy)
+            } else {
+                Text(modeLabel(current, current: current)).font(Typo.body).foregroundStyle(p.text2)
+            }
+        }
+    }
+
+    /// 外接屏：没有 HiDPI 档位时可以添加；islet 添加过的可以移除。别的工具写的配置不显示操作。
+    @ViewBuilder private func hiDPIRow(_ p: Palette, _ display: DisplayManager.Display) -> some View {
+        if display.canSwitch, let status = displays.overrides[display.id], status.external {
+            if status.owned {
+                divider(p)
+                row(p, "islet 添加的 HiDPI 档位", status.sizes.joined(separator: "、"), icon: "plus.rectangle.on.rectangle", tint: Color(hex: 0x30D158)) {
+                    PlainButton(title: "移除…") {
+                        guard confirmAlert("移除 islet 添加的 HiDPI 档位？",
+                                           "需要输入管理员密码。移除后这块屏会断开再接上一次，回到系统自带的分辨率。") else { return }
+                        displays.removeHiDPI(display)
+                    }
+                    .disabled(displays.busy)
+                }
+            } else if !status.installed, !display.hasHiDPIChoices, !status.sizes.isEmpty {
+                divider(p)
+                row(p, "添加 HiDPI 档位", status.sizes.joined(separator: "、"), icon: "plus.rectangle.on.rectangle", tint: Color(hex: 0x30D158)) {
+                    PlainButton(title: "添加…", prominent: true) {
+                        guard confirmAlert("为 \(display.name) 添加 HiDPI 档位？",
+                                           "需要输入管理员密码，在系统里为这块屏写一份显示配置。添加后屏幕会断开再接上一次，之后在分辨率里选择新档位。随时可以移除。") else { return }
+                        displays.addHiDPI(display)
+                    }
+                    .disabled(displays.busy)
+                }
+            }
+        }
+    }
+
+    private func modeLabel(_ mode: DisplayManager.Mode, current: DisplayManager.Mode) -> String {
+        var label = mode.size + (mode.hiDPI ? " · HiDPI" : mode.native ? " · 原生" : "")
+        if !mode.rate.isEmpty, mode.rate != current.rate { label += " · \(mode.rate)" }
+        return label
     }
 
     private var updateTitle: String {
@@ -953,14 +1080,7 @@ struct SettingsView: View {
                 }
             }
         }
-        section(p, "重置") {
-            row(p, "恢复默认设置", "流量统计保留，程序会重新启动", icon: "arrow.uturn.backward.circle.fill", tint: Color(hex: 0x8E8E93)) {
-                PlainButton(title: "恢复默认") {
-                    guard confirmAlert("恢复所有默认设置？", "所有设置会回到初始状态，程序随后重新启动。流量统计不受影响。") else { return }
-                    model.onResetAll()
-                }
-            }
-        }
+
     }
 
     /// 打赏二维码（随程序打包在 Resources 里）。
