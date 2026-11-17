@@ -38,7 +38,13 @@ final class Updater: NSObject, URLSessionDownloadDelegate {
 
     /// 更新说明：去掉 Markdown 记号，放进可滚动的文本框。
     private static func notesView(_ markdown: String) -> NSView {
-        let text = markdown.split(separator: "\n", omittingEmptySubsequences: false).map { line -> String in
+        // 「升级」一节是给 GitHub 下载页看的（怎么下载、系统要求），弹窗里已经在更新了，不显示
+        var lines = markdown.split(separator: "\n", omittingEmptySubsequences: false)
+        if let start = lines.firstIndex(where: { $0.hasPrefix("#") && $0.contains("升级") }) {
+            let end = lines[(start + 1)...].firstIndex { $0.hasPrefix("#") } ?? lines.endIndex
+            lines.removeSubrange(start..<end)
+        }
+        let text = lines.map { line -> String in
             var line = String(line).replacingOccurrences(of: "**", with: "").replacingOccurrences(of: "`", with: "")
             while line.hasPrefix("#") { line.removeFirst() }
             if line.hasPrefix("- ") { line = "• " + line.dropFirst(2) }
