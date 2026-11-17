@@ -30,7 +30,7 @@ final class WindowManager {
         window.contentViewController = NSHostingController(rootView: content())
         window.setContentSize(size)
         window.appearance = AppearanceSetting.current.nsAppearance
-        // 普通层级：切到别的程序时正常退到后面；窗口打开期间在程序坞显示图标，可从程序坞或 ⌘Tab 切回来
+        // 普通层级：切到别的程序时正常退到后面，再从灵动岛打开设置即可前置
         window.level = .normal
         window.collectionBehavior = [.moveToActiveSpace, .fullScreenAuxiliary]
         window.hidesOnDeactivate = false
@@ -46,23 +46,15 @@ final class WindowManager {
             frame.size.width = window.frameRect(forContentRect: NSRect(origin: .zero, size: size)).width
             window.setFrame(frame, display: false)
         }
-        NotificationCenter.default.addObserver(forName: NSWindow.willCloseNotification, object: window, queue: .main) { [weak self] _ in
+        NotificationCenter.default.addObserver(forName: NSWindow.willCloseNotification, object: window, queue: .main) { _ in
             onClose?()
-            DispatchQueue.main.async { self?.updateDockIcon() }
         }
         windows[id] = window
         bringToFront(window)
     }
 
-    /// 有窗口开着时在程序坞显示图标（菜单栏程序平时没有，窗口落到后面就找不回来）；全部关闭后隐藏。
-    private func updateDockIcon() {
-        let anyOpen = windows.values.contains { $0.isVisible }
-        let policy: NSApplication.ActivationPolicy = anyOpen ? .regular : .accessory
-        if NSApp.activationPolicy() != policy { NSApp.setActivationPolicy(policy) }
-    }
-
     private func bringToFront(_ window: NSWindow) {
-        if NSApp.activationPolicy() != .regular { NSApp.setActivationPolicy(.regular) }
+        // 不切换成 .regular（程序坞图标）：切回 .accessory 时系统会重建整条菜单栏，关窗时菜单栏会闪一下
         NSApp.activate()
         window.makeKeyAndOrderFront(nil)
         window.orderFrontRegardless()  // 即使系统没批准激活，也先显示在最前
