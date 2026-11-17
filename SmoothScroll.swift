@@ -9,27 +9,27 @@ final class SmoothScrollController: ObservableObject {
     static let shared = SmoothScrollController()
 
     enum State: Equatable {
-        case off, permissionRequired, pausedForMos, unavailable, active
+        case off, permissionRequired, pausedForOther, unavailable, active
 
         var description: String {
             switch self {
             case .off: return "让有刻度的鼠标滚轮像触控板一样顺滑"
             case .permissionRequired: return "需要辅助功能权限"
-            case .pausedForMos: return "Mos 正在运行，退出 Mos 后自动启用"
+            case .pausedForOther: return "另一个平滑滚动工具正在运行，退出它后自动启用"
             case .unavailable: return "未能开始，请重新检查辅助功能权限"
             case .active: return "已启用，触控板不受影响"
             }
         }
     }
 
-    /// 每格滚动的距离。“中”与 Mos 默认一致。
+    /// 每格滚动的距离。“中”是常见的默认手感。
     enum Distance: Int, CaseIterable {
         case short, medium, long
         var label: String { ["短", "中", "长"][rawValue] }
         var speed: Double { [1.6, 2.7, 4.2][rawValue] }
     }
 
-    /// 平滑程度：越高，每格滚动拖得越长、越柔和。“中”与 Mos 默认一致。
+    /// 平滑程度：越高，每格滚动拖得越长、越柔和。“中”是常见的默认手感。
     enum Smoothness: Int, CaseIterable {
         case low, medium, high
         var label: String { ["低", "中", "高"][rawValue] }
@@ -101,20 +101,20 @@ final class SmoothScrollController: ObservableObject {
 
     @objc private func environmentChanged(_ notification: Notification) {
         guard let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
-              app.bundleIdentifier?.lowercased() == Self.mosBundle else { return }
+              app.bundleIdentifier?.lowercased() == Self.otherScrollerBundle else { return }
         reconcile()
     }
 
     @objc private func recheck() { reconcile() }
 
-    private static let mosBundle = "com.caldis.mos"
+    private static let otherScrollerBundle = "com.caldis.mos"
 
     private func reconcile() {
         let next: State
         if !enabled {
             next = .off
-        } else if NSWorkspace.shared.runningApplications.contains(where: { !$0.isTerminated && $0.bundleIdentifier?.lowercased() == Self.mosBundle }) {
-            next = .pausedForMos     // 两个程序同时平滑会叠加成双倍距离
+        } else if NSWorkspace.shared.runningApplications.contains(where: { !$0.isTerminated && $0.bundleIdentifier?.lowercased() == Self.otherScrollerBundle }) {
+            next = .pausedForOther   // 两个平滑滚动同时生效会叠加成双倍距离
         } else if !AXIsProcessTrusted() {
             next = .permissionRequired
         } else {
