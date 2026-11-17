@@ -33,6 +33,12 @@ struct SpectrumPanelView: View {
                         .foregroundStyle(p.accentFill).frame(width: 20)
                     Text(model.source == nil ? "音乐频谱" : "频谱").font(Typo.title).foregroundStyle(p.text)
                     Spacer()
+                    Button(action: model.onHide) {
+                        Image(systemName: "eye.slash").font(.system(size: 13)).foregroundStyle(p.text2)
+                            .frame(width: 24, height: 24).contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .help("从岛上隐藏（可在设置里重新显示）")
                     Button(action: model.onSettings) {
                         Image(systemName: "gearshape").font(.system(size: 13)).foregroundStyle(p.text2)
                             .frame(width: 24, height: 24).contentShape(Rectangle())
@@ -62,7 +68,6 @@ struct SpectrumPanelView: View {
                 HStack(spacing: 14) {
                     LinkButton(title: "样式设置…", muted: true, action: model.onSettings)
                     Spacer()
-                    LinkButton(title: "隐藏频谱", muted: true, action: model.onHide)
                     LinkButton(title: "退出", muted: true, action: model.onQuit)
                 }
                 .padding(.top, 2)

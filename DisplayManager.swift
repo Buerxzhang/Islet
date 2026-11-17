@@ -317,7 +317,7 @@ final class DisplayManager: ObservableObject {
             alert.informativeText = text()
         }
         RunLoop.main.add(timer, forMode: .common)   // 独立弹窗是模态运行，普通模式的计时器不走
-        // 从右键菜单切换时设置窗口没开：弹独立的对话框
+        // 设置窗口没开（比如切换后被关掉）：弹独立的对话框
         guard let window = NSApp.windows.first(where: { $0.title == "islet 设置" && $0.isVisible }) else {
             NSApp.activate()
             let response = alert.runModal()

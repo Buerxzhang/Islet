@@ -311,7 +311,8 @@ final class MetricsIslandView: NSView {
 
     /// 菜单栏项的宽度：各项 + 间距 + 按展开程度露出的音乐部分。
     var preferredWidth: CGFloat {
-        guard !segments.isEmpty || audio != nil || trailing != nil else { return 0 }
+        // 音乐收起（没在播放）时不算：只剩它时整个胶囊隐藏，不留一个空的黑胶囊
+        guard !segments.isEmpty || (audio != nil && reveal > 0) || trailing != nil else { return 0 }
         return ceil(layoutSlots().width + leadingPadding + trailingPadding) + 6
     }
 

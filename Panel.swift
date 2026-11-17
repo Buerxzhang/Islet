@@ -82,6 +82,7 @@ final class PanelModel: ObservableObject {
     @Published var ejecting: Set<String> = []
 
     var onSettings: () -> Void = {}
+    var onHide: () -> Void = {}
     var onDiagnostics: () -> Void = {}
     var onQuit: () -> Void = {}
     var onSelectStrategy: (FanStrategy) -> Void = { _ in }
@@ -280,6 +281,12 @@ struct PanelView: View {
                 .frame(width: 20)
             Text(model.metric.panelTitle).font(Typo.title).foregroundStyle(p.text)
             Spacer()
+            Button(action: model.onHide) {
+                Image(systemName: "eye.slash").font(.system(size: 13)).foregroundStyle(p.text2)
+                    .frame(width: 24, height: 24).contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help("从岛上隐藏（可在设置里重新显示）")
             Button(action: model.onSettings) {
                 Image(systemName: "gearshape").font(.system(size: 13)).foregroundStyle(p.text2)
                     .frame(width: 24, height: 24).contentShape(Rectangle())

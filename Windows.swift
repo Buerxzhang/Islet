@@ -180,6 +180,20 @@ final class SettingsModel: ObservableObject {
         refresh()
     }
 
+    /// 只恢复“显示在岛上”这一块：各项显示 / 隐藏、顺序（重新按机型套用默认），其他设置不动。
+    func resetIslandItems() {
+        let defaults = UserDefaults.standard
+        defaults.removeObject(forKey: "islandOrder")
+        defaults.removeObject(forKey: "metricOrder")
+        for setting in Metric.allCases.map(\.setting) where setting != .direction { defaults.removeObject(forKey: setting.key) }
+        islandOrder = IslandOrder.items
+        // 音乐、蓝牙、网速默认都显示；网速沿用原来的显示方式
+        for id in ["music", "bluetooth", "network"] where !isVisible(id) { setVisible(id, true) }
+        onChange(.cpuItem)
+        onMetricOrder()
+        refresh()
+    }
+
     static func metricSetting(_ id: String) -> SpeedSetting? {
         Metric.allCases.first { "\($0)" == id }?.setting
     }
@@ -222,16 +236,10 @@ final class SettingsModel: ObservableObject {
 
     func selection(_ setting: SpeedSetting) -> Int { setting.selection }
 
-    /// 修改设置；会导致所有指标都隐藏时拒绝（否则再也打不开面板和设置）。
+    /// 修改设置。允许把指标全部隐藏：胶囊消失后再次打开 islet 会弹出设置。
     func select(_ setting: SpeedSetting, _ index: Int) {
-        let previous = setting.selection
         setting.select(index)
-        if !Metric.allCases.contains(where: \.isShown) {
-            setting.select(previous)
-            NSSound.beep()
-        } else {
-            onChange(setting)
-        }
+        onChange(setting)
         revision += 1
     }
 
@@ -278,16 +286,6 @@ struct SettingsView: View {
     /// 走查用：不包 ScrollView（离屏渲染画不出滚动视图的内容）。
     var flat = false
 
-    private final class DisplayCardHover: ObservableObject {
-        struct Card: Equatable {
-            let displayID: CGDirectDisplayID
-            let modeID: Int32
-        }
-        @Published var card: Card?
-    }
-
-    @StateObject private var displayCardHover = DisplayCardHover()
-
     var body: some View {
         Themed { p in
             HStack(spacing: 0) {
@@ -316,8 +314,8 @@ struct SettingsView: View {
     private func sidebar(_ p: Palette) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             ForEach(SettingsPage.allCases.filter { !SettingsPage.bottom.contains($0) }) { page in sidebarItem(p, page) }
-            Spacer()
-            Rectangle().fill(p.separator).frame(height: 1).padding(.horizontal, 8).padding(.bottom, 6)
+            // “关于”紧跟在功能页下面，用分隔线隔开；不推到底部，窗口拉高时不会孤零零挂在最下面
+            Rectangle().fill(p.separator).frame(height: 1).padding(.horizontal, 8).padding(.vertical, 6)
             ForEach(SettingsPage.bottom) { page in sidebarItem(p, page) }
         }
         .padding(.horizontal, 10)
@@ -366,12 +364,11 @@ struct SettingsView: View {
 
     /// 通用：启动、外观、单位、提醒、数据与流量。
     @ViewBuilder private func generalPage(_ p: Palette) -> some View {
-        section(p, "启动") {
+        section(p, "基本") {
             row(p, "登录时启动", nil, icon: "power", tint: Color(hex: 0x30D158)) {
                 Toggle2(isOn: model.launchAtLogin, onChange: model.setLaunchAtLogin)
             }
-        }
-        section(p, "外观") {
+            divider(p)
             row(p, "主题", "面板和窗口", icon: "circle.lefthalf.filled", tint: Color(hex: 0x5E5CE6)) {
                 Segmented(options: AppearanceSetting.allCases.map { ($0, $0.label) },
                           selection: model.appearance, onSelect: model.setAppearance)
@@ -425,7 +422,7 @@ struct SettingsView: View {
             Text("预览（示例数据）").font(Typo.caption).foregroundStyle(p.text3)
         }
         .frame(maxWidth: .infinity)
-        section(p, "位置") {
+        section(p, "胶囊") {
             row(p, "全局悬浮", "将胶囊居中放在刘海或菜单栏下方", icon: "rectangle.on.rectangle", tint: Color(hex: 0x0A84FF)) {
                 Toggle2(isOn: AppDelegate.floatsIsland, onChange: model.onFloatingIsland)
             }
@@ -447,8 +444,7 @@ struct SettingsView: View {
                     }
                 }
             }
-        }
-        section(p, "胶囊") {
+            divider(p)
             SpectrumLookEditor(look: SpectrumLook.current, part: .backdrop) { look in
                 SpectrumController.shared.setLook(look)
                 model.refresh()
@@ -469,10 +465,23 @@ struct SettingsView: View {
                 Text("按住拖动排序，拖到“未显示”即隐藏").font(Typo.caption).foregroundStyle(p.text3)
             }
             Card(padding: 12) { itemRows(p, shown, empty: "把要显示的项拖到这里") }
+            if !Metric.allCases.contains(where: \.isShown) {
+                // 音乐、蓝牙只在播放 / 连接时出现，没有常驻指标时胶囊可能整个消失
+                Text("没有常驻指标时胶囊可能会消失，再次打开 islet 即可回到设置")
+                    .font(Typo.caption).foregroundStyle(p.text3)
+            }
             Text("未显示").font(Typo.bodyMedium).foregroundStyle(p.text2).padding(.top, 8)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(frameReader(SettingsModel.hiddenMarker))
             Card(padding: 12) { itemRows(p, hidden, empty: "把不需要的项拖到这里") }
+            // 列表的“恢复默认”放在整块末尾：只管显示哪些项和顺序
+            LinkButton(title: "恢复默认显示和顺序", muted: true) {
+                guard confirmAlert("恢复岛上项目的默认显示？",
+                                   "显示哪些项目和它们的顺序会按本机重新设置，其他设置不变。") else { return }
+                model.resetIslandItems()
+            }
+            .frame(maxWidth: .infinity, alignment: .trailing)
+            .padding(.top, 2)
         }
         .background(frameReader(SettingsModel.listMarker))
         .coordinateSpace(name: "islandList")
@@ -561,7 +570,7 @@ struct SettingsView: View {
         default:
             let setting = SettingsModel.metricSetting(id)
             let icon = setting.map(Self.metricIcon) ?? ("circle", Color.gray)
-            return (setting?.title ?? id, icon.0, icon.1, ["fan", "fps"].contains(id))
+            return (setting?.title ?? id, icon.0, icon.1, ["fan", "fps", "temperature"].contains(id))
         }
     }
 
@@ -598,6 +607,7 @@ struct SettingsView: View {
         case "network": networkDetail(p)
         case "fan": fanDetail(p)
         case "fps": fpsDetail(p)
+        case "temperature": temperatureDetail(p)
         default: EmptyView()
         }
     }
@@ -718,9 +728,10 @@ struct SettingsView: View {
         }
     }
 
-    private func fanDetail(_ p: Palette) -> some View {
+    /// 温度：单位（影响所有温度显示，所以放在“温度”这一项，不藏在风扇里）。
+    private func temperatureDetail(_ p: Palette) -> some View {
         detail(p) {
-            row(p, "温度单位", "菜单栏和面板里的温度", icon: "thermometer.variable", tint: Color(hex: 0xFF453A)) {
+            detailRow(p, "温度单位", "岛上、面板和提醒里的温度") {
                 Segmented(options: [(false, "℃"), (true, "℉")], selection: Units.fahrenheit) { value in
                     UserDefaults.standard.set(value, forKey: "unitFahrenheit")
                     model.onUnits()
@@ -728,7 +739,11 @@ struct SettingsView: View {
                 }
                 .frame(width: 120)
             }
-            divider(p)
+        }
+    }
+
+    private func fanDetail(_ p: Palette) -> some View {
+        detail(p) {
             row(p, "调速依据温度", basisSubtitle, icon: "thermometer.medium", tint: Color(hex: 0xFF9F0A)) {
                 Segmented(options: TemperatureBasis.allCases.reversed().map { ($0, $0.label) },
                           selection: fanClient.config.basis) { basis in
@@ -979,7 +994,7 @@ struct SettingsView: View {
         guard let native = display.native, mode.pixelWidth > native.width + 8 else {
             return "按屏幕原生像素绘制，最清晰"
         }
-        return "比原生更费显卡（实际按 \(mode.renderingSize) 绘制）"
+        return "文字更清晰，显卡负担稍高（按 \(mode.renderingSize) 绘制）"
     }
 
     private func setHiDPI(_ on: Bool, on display: DisplayManager.Display) {
@@ -1005,9 +1020,6 @@ struct SettingsView: View {
                     let selected = mode.group == display.current.group
                     let label = display.label(mode)
                     let highlight = label == "推荐" || label == "默认"
-                    let card = DisplayCardHover.Card(displayID: display.id, modeID: mode.id)
-                    let hovered = displayCardHover.card == card && !displays.busy
-                    let rendering = "实际绘制 \(mode.renderingSize)"
                     Button { displays.choose(mode, on: display) } label: {
                         VStack(spacing: 3) {
                             Text(mode.size).font(.system(size: 13, weight: .semibold)).monospacedDigit()
@@ -1016,10 +1028,9 @@ struct SettingsView: View {
                             Text(label).font(Typo.caption)
                                 .foregroundStyle(selected || highlight ? p.accentText : p.text2)
                                 .lineLimit(1).minimumScaleFactor(0.8)
-                            // 悬停时只把放大比例换成实际渲染尺寸，说明文字不动，扫过一排时不晃
-                            Text(hovered ? rendering : display.scale(mode))
+                            Text(display.scale(mode))
                                 .font(.system(size: 10)).monospacedDigit()
-                                .foregroundStyle(hovered ? p.text2 : p.text3.opacity(0.7))
+                                .foregroundStyle(p.text3.opacity(0.7))
                                 .lineLimit(1).minimumScaleFactor(0.7)
                         }
                         .frame(maxWidth: .infinity)
@@ -1029,14 +1040,7 @@ struct SettingsView: View {
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
-                    .onHover { inside in
-                        if inside {
-                            displayCardHover.card = card
-                        } else if displayCardHover.card == card {
-                            displayCardHover.card = nil
-                        }
-                    }
-                    .accessibilityLabel("\(mode.size)，\(label)，界面 \(display.scale(mode))，\(rendering)")
+                    .accessibilityLabel("\(mode.size)，\(label)，界面 \(display.scale(mode))")
                 }
             }
             if hidden > 0 {
@@ -1056,7 +1060,7 @@ struct SettingsView: View {
         switch model.update {
         case .available(let release): return "发现新版本 \(release.version)"
         case .latest: return "已是最新版本"
-        default: return "当前版本 \(UpdateChecker.currentVersion)"
+        default: return "软件更新"
         }
     }
 
@@ -1065,7 +1069,7 @@ struct SettingsView: View {
         case .checking: return "正在查询 GitHub…"
         case .failed: return "检查失败，请检查网络后再试"
         case .available: return "当前是 \(UpdateChecker.currentVersion)，可以直接更新并重启"
-        case .latest: return "当前版本 \(UpdateChecker.currentVersion)"
+        case .latest: return "当前是 \(UpdateChecker.currentVersion)"
         case .idle: return "从 GitHub 查询是否有新版本"
         }
     }
@@ -1100,9 +1104,9 @@ struct SettingsView: View {
                 divider(p)
                 VStack(spacing: 8) {
                     Text("如果 islet 对你有帮助，可以请作者喝杯咖啡").font(Typo.caption).foregroundStyle(p.text3)
-                    HStack(spacing: 16) {
-                        donateCode(p, "alipay", "支付宝")
-                        donateCode(p, "wechat", "微信")
+                    HStack(spacing: 28) {
+                        donateCode(p, "alipay", "支付宝", Color(hex: 0x1677FF))
+                        donateCode(p, "wechat", "微信", Color(hex: 0x07C160))
                     }
                 }
                 .frame(maxWidth: .infinity)
@@ -1144,14 +1148,19 @@ struct SettingsView: View {
         }
     }
 
-    /// 打赏二维码（随程序打包在 Resources 里）。
-    @ViewBuilder private func donateCode(_ p: Palette, _ name: String, _ title: String) -> some View {
+    /// 打赏二维码（随程序打包在 Resources 里）：白底圆角卡片，中间是支付方式的图标，下面一行带品牌色圆点的名字。
+    @ViewBuilder private func donateCode(_ p: Palette, _ name: String, _ title: String, _ tint: Color) -> some View {
         if let image = Bundle.main.image(forResource: name) {
-            VStack(spacing: 6) {
+            VStack(spacing: 8) {
                 Image(nsImage: image).resizable().aspectRatio(contentMode: .fit)
-                    .frame(height: 210)
-                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                Text(title).font(Typo.caption).foregroundStyle(p.text3)
+                    .frame(width: 148, height: 148)
+                    .padding(10)
+                    .background(Color.white, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(p.separator, lineWidth: 1))
+                HStack(spacing: 6) {
+                    Circle().fill(tint).frame(width: 7, height: 7)
+                    Text(title).font(Typo.caption).foregroundStyle(p.text2)
+                }
             }
         }
     }

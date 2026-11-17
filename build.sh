@@ -21,7 +21,7 @@ helper_dir="$app/Contents/Library/FanHelper"
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources" "$helper_dir"
 cp Info.plist "$app/Contents/Info.plist"
 cp islet.icns "$app/Contents/Resources/islet.icns"
-cp docs/donate/alipay.jpg docs/donate/wechat.jpg "$app/Contents/Resources/"   # 关于页的打赏二维码
+cp docs/donate/alipay.png docs/donate/wechat.png "$app/Contents/Resources/"   # 关于页的打赏二维码
 
 # 通用二进制（Apple 芯片 + Intel）
 for arch in arm64 x86_64; do

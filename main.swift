@@ -661,6 +661,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             updateControlTemperatures()
             if let page = SettingsPage.allCases.first(where: { CommandLine.arguments.contains($0.rawValue) }) { settingsModel.page = page }
             if CommandLine.arguments.contains("open") { settingsModel.expanded = ["cpu", "temperature", "fan"] }
+            if CommandLine.arguments.contains("donate") { settingsModel.showDonate = true }
             SoundController.fillDemo(SoundController.shared.panel)
             view = AnyView(SettingsView(model: settingsModel, flat: true).frame(width: 680, height: 560))
         case "curve":
@@ -763,6 +764,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             guard let self else { return }
             let id = "\(self.panel.metric)"
             self.openSettings(page: .menuBar, expand: [Metric.network, .fan, .fps].contains(self.panel.metric) ? id : nil)
+        }
+        panel.onHide = { [weak self] in
+            guard let self else { return }
+            self.popover.performClose(nil)
+            self.settingsModel.setVisible("\(self.panel.metric)", false)
         }
         panel.onQuit = { NSApp.terminate(nil) }
         panel.onDiagnostics = { [weak self] in
@@ -882,7 +888,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         }
     }
 
-    /// 右键菜单（系统原生菜单：点任意位置都会关闭，带快捷键提示）：设置、全局悬浮、关于、退出。
+    /// 右键菜单（系统原生菜单：点任意位置都会关闭，带快捷键提示）：设置、全局悬浮、平滑滚动、关于、退出。
     private func islandMenu() -> NSMenu {
         let menu = NSMenu()
         let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? ""
@@ -901,7 +907,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         smooth.target = self
         smooth.state = SmoothScrollController.shared.enabled ? .on : .off
         menu.addItem(smooth)
-        if let resolution = resolutionMenu() { menu.addItem(resolution) }
         menu.addItem(.separator())
         let about = NSMenuItem(title: "关于 islet", action: #selector(menuOpenAbout), keyEquivalent: "")
         about.target = self
@@ -913,44 +918,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
 
     @objc private func menuToggleSmoothScroll() {
         SmoothScrollController.shared.setEnabled(!SmoothScrollController.shared.enabled)
-    }
-
-    /// “分辨率”子菜单：每块屏一组，列设置里默认显示的那几档，勾选当前在用的。
-    private func resolutionMenu() -> NSMenuItem? {
-        let manager = DisplayManager.shared
-        manager.refresh()
-        let screens = manager.displays.filter { $0.canSwitch && $0.sizeOptions.count > 1 }
-        guard !screens.isEmpty, !manager.busy else { return nil }
-        let submenu = NSMenu()
-        for (index, display) in screens.enumerated() {
-            if index > 0 { submenu.addItem(.separator()) }
-            if screens.count > 1 {
-                let header = NSMenuItem(title: display.name, action: nil, keyEquivalent: "")
-                header.isEnabled = false
-                submenu.addItem(header)
-            }
-            for mode in display.sizeOptions {
-                let label = display.label(mode)
-                let item = NSMenuItem(title: label.isEmpty ? mode.size : "\(mode.size)  \(label)",
-                                      action: #selector(menuChooseResolution(_:)), keyEquivalent: "")
-                item.target = self
-                item.representedObject = (display.id, mode.id)
-                item.state = mode.group == display.current.group ? .on : .off
-                submenu.addItem(item)
-            }
-        }
-        let item = NSMenuItem(title: "分辨率", action: nil, keyEquivalent: "")
-        item.submenu = submenu
-        return item
-    }
-
-    @objc private func menuChooseResolution(_ sender: NSMenuItem) {
-        guard let (displayID, modeID) = sender.representedObject as? (CGDirectDisplayID, Int32) else { return }
-        let manager = DisplayManager.shared
-        guard let display = manager.displays.first(where: { $0.id == displayID }),
-              let mode = display.sizeOptions.first(where: { $0.id == modeID }),
-              mode.group != display.current.group else { return }
-        manager.choose(mode, on: display)
     }
 
     private func showIslandMenu(from anchor: NSView) {
