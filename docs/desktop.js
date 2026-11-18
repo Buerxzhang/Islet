@@ -523,7 +523,7 @@
   $("main.desktop").appendChild(win);
   const PAGES = [["灵动岛", "#5e5ce6", '<rect x="3" y="8" width="18" height="8" rx="4" fill="#fff" stroke="none"/>'],
     ["扩展功能", "#bf5af2", '<path d="M10 4h4v3a2 2 0 1 0 0 0h3v4h-1a2 2 0 1 0 0 4h1v4h-4v-1a2 2 0 1 0-4 0v1H6v-4h1a2 2 0 1 0 0-4H6V7h4z" fill="#fff" stroke="none"/>'],
-    ["通用", "#8e8e93", '<circle cx="12" cy="12" r="3.2"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1"/>'],
+    ["通用", "#8e8e93", '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>'],
     ["关于", "#ff9f0a", '<circle cx="12" cy="12" r="8" fill="#fff" stroke="none"/><path d="M12 11v5M12 8h.01" stroke="#ff9f0a"/>']];
   // 图标块：和软件的 IconTile 一样，上浅下深的单色渐变、圆角 0.26
   const tile = (color, path, size = 30) => `<span class="tile" style="background:linear-gradient(180deg, color-mix(in srgb, ${color} 85%, #fff), ${color});width:${size}px;height:${size}px;border-radius:${(size * 0.26).toFixed(1)}px"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">${path}</svg></span>`;
@@ -1037,7 +1037,7 @@
   // 程序坞只放几个“应用”，像网站导航：岛上的各项已经能直接点开，这里不再重复
   const DOCK = [
     { tip: "islet", open: "about", img: true },
-    { tip: "islet 设置", page: "灵动岛", color: "#8e8e93", path: '<circle cx="12" cy="12" r="3.2"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1"/>' },
+    { tip: "islet 设置", page: "灵动岛", color: "#8e8e93", path: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>' },
     { tip: "扩展功能：平滑滚动、HiDPI", page: "扩展功能", color: "#bf5af2", path: '<path d="M10 4h4v3a2 2 0 1 0 0 0h3v4h-1a2 2 0 1 0 0 4h1v4h-4v-1a2 2 0 1 0-4 0v1H6v-4h1a2 2 0 1 0 0-4H6V7h4z" fill="#fff" stroke="none"/>' },
     { tip: "常见问题", open: "faq", color: "#ff9f0a", path: '<circle cx="12" cy="12" r="8.5"/><path d="M9.6 9.4a2.5 2.5 0 1 1 3.6 2.3c-.8.4-1.2.9-1.2 1.8M12 16.8h.01"/>' },
     "gap",
