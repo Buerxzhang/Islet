@@ -1127,7 +1127,8 @@ struct SettingsView: View {
         section(p, "项目") {
             row(p, "\(AppInfo.author) / islet", "GitHub 开源项目", icon: "chevron.left.forwardslash.chevron.right", tint: Color(hex: 0x1C1C1E)) {
                 HStack(spacing: 8) {
-                    PlainButton(title: "主页") { NSWorkspace.shared.open(AppInfo.homepage) }
+                    PlainButton(title: "官网") { NSWorkspace.shared.open(AppInfo.website) }
+                    PlainButton(title: "GitHub") { NSWorkspace.shared.open(AppInfo.homepage) }
                     PlainButton(title: model.stars.map { "⭐ Star · \($0)" } ?? "⭐ Star") { NSWorkspace.shared.open(AppInfo.homepage) }
                     PlainButton(title: model.showDonate ? "☕️ 收起" : "☕️ 打赏", prominent: model.showDonate) {
                         withAnimation(.easeInOut(duration: 0.2)) { model.showDonate.toggle() }

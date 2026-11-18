@@ -6,8 +6,11 @@
 
 <p align="center">菜单栏里的灵动岛：系统指标、音乐频谱、蓝牙电量，一眼看全。</p>
 
+<p align="center">官网：<a href="https://buerxzhang.github.io/islet/">buerxzhang.github.io/islet</a>（可以在网页里直接点着体验）</p>
+
 <p align="center">
   <a href="https://github.com/Buerxzhang/islet/releases/latest"><img alt="Download" src="https://img.shields.io/github/v/release/Buerxzhang/islet?label=download&logo=apple&logoColor=white&color=2ea44f"></a>
+  <a href="https://buerxzhang.github.io/islet/"><img alt="Website" src="https://img.shields.io/badge/website-online%20demo-0a84ff"></a>
   <img alt="macOS" src="https://img.shields.io/badge/macOS-14%2B-black">
   <img alt="Apple Silicon & Intel" src="https://img.shields.io/badge/Apple%20Silicon%20%26%20Intel-universal-blue">
   <a href="https://github.com/Buerxzhang/islet/stargazers"><img alt="Stars" src="https://img.shields.io/github/stars/Buerxzhang/islet?style=social"></a>

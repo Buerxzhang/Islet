@@ -635,7 +635,7 @@
   let checking = false;
   function aboutPage() {
     return `<div class="about"><img src="icon.png" alt=""><div><div><b>islet</b> <small>v1.3.5 (78)</small></div><div class="sub">菜单栏里的灵动岛</div></div></div>` +
-      section("项目", row("Buerxzhang / islet", "GitHub 开源项目", `<span class="btns"><a class="pbtn" href="https://github.com/Buerxzhang/islet" target="_blank" rel="noopener">主页</a><a class="pbtn" href="https://github.com/Buerxzhang/islet" target="_blank" rel="noopener">★ Star</a></span>`, tile("#1d1d1f", '<path d="M8 8l-4 4 4 4M16 8l4 4-4 4M14 5l-4 14"/>'))) +
+      section("项目", row("Buerxzhang / islet", "GitHub 开源项目", `<span class="btns"><a class="pbtn" href="./">官网</a><a class="pbtn" href="https://github.com/Buerxzhang/islet" target="_blank" rel="noopener">GitHub</a><a class="pbtn" href="https://github.com/Buerxzhang/islet" target="_blank" rel="noopener">★ Star</a></span>`, tile("#1d1d1f", '<path d="M8 8l-4 4 4 4M16 8l4 4-4 4M14 5l-4 14"/>'))) +
       section("更新", join(
         row(checking ? "软件更新" : "已是最新版本", checking ? "正在查询 GitHub…" : "当前是 1.3.5", btn(checking ? "检查中…" : "检查更新", 'data-check="1"'), tile("#0a84ff", '<path d="M20 12a8 8 0 1 1-2.3-5.7M20 4v4h-4"/>')),
         row("自动检查更新", "每天一次，有新版本时打开这一页", tg("autoUpdate"), tile("#ff9f0a", '<path d="M6 16V11a6 6 0 0 1 12 0v5l2 2H4zM10 21h4" fill="#fff" stroke="none"/>')))) +
