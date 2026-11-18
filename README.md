@@ -1,10 +1,8 @@
 <p align="center">
-  <img src="docs/icon.png" width="128" alt="islet">
+  <img src="docs/screenshots/readme-banner.png" width="860" alt="islet：给 Mac 菜单栏加个灵动岛，系统状态、音乐频谱、蓝牙电量，免费开源">
 </p>
 
 <h1 align="center">islet</h1>
-
-<p align="center">菜单栏里的灵动岛：系统指标、音乐频谱、蓝牙电量，一眼看全。</p>
 
 <p align="center">官网：<a href="https://buerxzhang.github.io/islet/">buerxzhang.github.io/islet</a>（可以在网页里直接点着体验）</p>
 
@@ -16,13 +14,11 @@
   <a href="https://github.com/Buerxzhang/islet/stargazers"><img alt="Stars" src="https://img.shields.io/github/stars/Buerxzhang/islet?style=social"></a>
 </p>
 
-<p align="center">
-  <img src="docs/screenshots/hero.png" width="860" alt="菜单栏里的 islet，下面是点开后的音乐和网速面板">
-</p>
-
 islet 是一个 macOS 菜单栏工具。它把 CPU、内存、网速这些常看的数字，和正在播放的音乐、蓝牙设备的电量，收进菜单栏里的一枚胶囊。平时它只是一排指标；电脑里有声音时，胶囊向左展开出封面和频谱；点开任意一项，是更详细的面板。
 
 ## 灵动岛
+
+首图为宣传示意。新增及更新的功能图来自当前版本，面板中的曲线、排行和部分设备信息使用示例数据。
 
 胶囊会随连接的设备和正在出声的程序变化。下面用示例数据展示不同状态。
 
@@ -111,7 +107,7 @@ islet 启动时，如果检测到任意一块启用的屏幕有刘海，默认�
 实时频谱需要 macOS 14.2 或更新版本。
 
 <p align="center">
-  <img src="docs/screenshots/music.png" width="300" alt="音乐面板：封面、频谱、进度和播放按钮">
+  <img src="docs/screenshots/music-current.png" width="300" alt="音乐面板：封面、频谱、进度和播放按钮">
 </p>
 
 - 支持网易云音乐、Apple Music、QQ 音乐、Spotify 等播放器。能读取封面时，频谱和按钮使用封面色，切歌时颜色渐变。
@@ -131,9 +127,9 @@ islet 启动时，如果检测到任意一块启用的屏幕有刘海，默认�
 
 <table>
   <tr>
-    <td align="center" valign="top" width="33%"><img src="docs/screenshots/cpu.png" width="250" alt="CPU 面板"></td>
-    <td align="center" valign="top" width="33%"><img src="docs/screenshots/network.png" width="250" alt="网速面板"></td>
-    <td align="center" valign="top" width="33%"><img src="docs/screenshots/power.png" width="250" alt="功耗面板"></td>
+    <td align="center" valign="top" width="33%"><img src="docs/screenshots/cpu-current.png" width="250" alt="CPU 面板"></td>
+    <td align="center" valign="top" width="33%"><img src="docs/screenshots/network-current.png" width="250" alt="网速面板"></td>
+    <td align="center" valign="top" width="33%"><img src="docs/screenshots/power-current.png" width="250" alt="功耗面板"></td>
   </tr>
   <tr>
     <td align="center">CPU</td>
@@ -154,7 +150,7 @@ islet 启动时，如果检测到任意一块启用的屏幕有刘海，默认�
 ## 帧率
 
 <p align="center">
-  <img src="docs/screenshots/fps.png" width="300" alt="帧率面板：被测屏幕、屏幕刷新率和走势">
+  <img src="docs/screenshots/fps-current.png" width="300" alt="帧率面板：被测屏幕、屏幕刷新率和走势">
 </p>
 
 打开后，岛上会多一项「FPS」，显示屏幕每秒画面变化的次数。测的是前台窗口所在的那块屏幕，多块屏幕时跟着前台窗口走；islet 自己的岛和面板不算。默认关闭，在设置里打开时需要授予屏幕录制权限。
@@ -181,7 +177,7 @@ islet 启动时，如果检测到任意一块启用的屏幕有刘海，默认�
 ## 蓝牙
 
 <p align="center">
-  <img src="docs/screenshots/bluetooth.png" width="300" alt="蓝牙面板：已连接设备的电量圆环和其他设备">
+  <img src="docs/screenshots/bluetooth-current.png" width="300" alt="蓝牙面板：已连接设备的电量圆环和其他设备">
 </p>
 
 面板里列出已配对的设备，点一下就能连接或断开。部分索尼耳机在系统未显示电量时，也可以通过 islet 读取。
@@ -200,9 +196,23 @@ islet 启动时，如果检测到任意一块启用的屏幕有刘海，默认�
 
 设置里的「扩展功能」页，放的是和灵动岛无关、但常用的小工具，都默认关闭：
 
-- **鼠标平滑滚动**：让有刻度的鼠标滚轮像触控板一样顺滑。滚动距离、平滑程度各有三档，可以单独反转鼠标的滚动方向；触控板不受影响，检测到其他平滑滚动工具在运行时自动让开。需要辅助功能权限。
-- **显示器**：每块屏一排分辨率卡片，原生在最左，往右文字越来越大，标出「推荐」「原生」、界面放大比例，以及当前是 HiDPI 还是普通模式、实际按多大尺寸绘制；默认列 5 档，其余在「更多分辨率」里。切换后 15 秒内不确认会自动恢复。
-  - 2K、带鱼屏这类系统不支持 HiDPI 的外接屏，打开「HiDPI 支持」会添加 7 个与原生严格等比例的 HiDPI 档位，并切到按屏幕尺寸推荐的大小，文字会细腻很多。需要管理员密码，关掉只删 islet 自己写的配置。
+### 鼠标平滑滚动
+
+让有刻度的鼠标滚轮像触控板一样顺滑。滚动距离、平滑程度各有三档，可以单独反转鼠标的滚动方向；触控板不受影响，检测到其他平滑滚动工具在运行时自动让开。需要辅助功能权限。
+
+<p align="center">
+  <img src="docs/screenshots/smooth-scroll-current.png" width="640" alt="平滑滚动设置：滚动距离、平滑程度和反转滚动方向">
+</p>
+
+### 显示器与 HiDPI
+
+每块屏一排分辨率卡片，原生在最左，往右文字越来越大，标出「推荐」「原生」、界面放大比例，以及当前是 HiDPI 还是普通模式、实际按多大尺寸绘制；默认列 5 档，其余在「更多分辨率」里。切换后 15 秒内不确认会自动恢复。
+
+2K、带鱼屏这类系统不支持 HiDPI 的外接屏，打开「HiDPI 支持」会添加 7 个与原生严格等比例的 HiDPI 档位，并切到按屏幕尺寸推荐的大小，文字会细腻很多。需要管理员密码，关掉只删 islet 自己写的配置。
+
+<p align="center">
+  <img src="docs/screenshots/hidpi-current.png" width="760" alt="双屏 HiDPI 设置：当前渲染分辨率、原生与推荐档位、15 秒自动恢复提示">
+</p>
 
 ## 其他
 
