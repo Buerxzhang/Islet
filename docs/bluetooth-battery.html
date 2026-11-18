@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mac 菜单栏怎么直接看到蓝牙耳机、键盘、鼠标的电量 - islet</title>
+<meta name="description" content="装上免费开源的 islet，菜单栏里每台已连接的蓝牙设备都会显示一个电量圆环：绿色充足、橙色偏低、红色不足。点开是蓝牙面板，可以看具体电量、连接或断开设备；电量低时还会发通知。">
+<link rel="canonical" href="https://buerxzhang.github.io/islet/bluetooth-battery.html">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Mac 菜单栏怎么直接看到蓝牙耳机、键盘、鼠标的电量 - islet">
+<meta property="og:description" content="装上免费开源的 islet，菜单栏里每台已连接的蓝牙设备都会显示一个电量圆环：绿色充足、橙色偏低、红色不足。点开是蓝牙面板，可以看具体电量、连接或断开设备；电量低时还会发通知。">
+<meta property="og:url" content="https://buerxzhang.github.io/islet/bluetooth-battery.html">
+<meta property="og:image" content="https://buerxzhang.github.io/islet/screenshots/hero.png">
+<link rel="icon" href="icon.png">
+<link rel="stylesheet" href="style.css">
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "Mac 菜单栏怎么直接看到蓝牙耳机、键盘、鼠标的电量", "acceptedAnswer": {"@type": "Answer", "text": "装上免费开源的 islet，菜单栏里每台已连接的蓝牙设备都会显示一个电量圆环：绿色充足、橙色偏低、红色不足。点开是蓝牙面板，可以看具体电量、连接或断开设备；电量低时还会发通知。"}}]}</script>
+</head>
+<body>
+<header class="top"><div class="wrap">
+<a class="brand" href="./"><img src="icon.png" alt="">islet</a>
+<nav class="top"><a class="hide-sm" href="./#features">功能</a><a class="hide-sm" href="./#faq">常见问题</a><a href="https://github.com/Buerxzhang/islet">GitHub</a><a href="https://github.com/Buerxzhang/islet/releases/latest">下载</a></nav>
+</div></header>
+<main class="wrap">
+<article>
+<div class="crumb"><a href="./">islet</a> / 蓝牙电量</div>
+<h1>Mac 菜单栏怎么直接看到蓝牙耳机、键盘、鼠标的电量</h1>
+<div class="answer"><p>装上免费开源的 islet，菜单栏里每台已连接的蓝牙设备都会显示一个电量圆环：绿色充足、橙色偏低、红色不足。点开是蓝牙面板，可以看具体电量、连接或断开设备；电量低时还会发通知。</p></div>
+<figure class="shot bar"><img src="screenshots/island-desktop-metrics.png" width="760" alt="菜单栏右侧的圆环是已连接蓝牙设备的电量"><figcaption>菜单栏右侧的圆环是已连接蓝牙设备的电量</figcaption></figure>
+
+<h2>菜单栏里的电量圆环</h2>
+<p>每台已连接的设备一个圆环，环的长短就是电量，中间是设备图标（耳机、键盘、鼠标、手柄等）。不用点开系统的蓝牙菜单，扫一眼就知道哪个快没电了。</p>
+
+<h2>蓝牙面板</h2>
+<figure class="shot"><img src="screenshots/bluetooth.png" width="320" alt="islet 的蓝牙面板：已连接设备的电量和其他设备" loading="lazy"><figcaption>蓝牙面板</figcaption></figure>
+<ul>
+<li>列出已配对的设备，点一下就能连接或断开。</li>
+<li>部分索尼耳机在系统没显示电量时，islet 也能读到。</li>
+<li>蓝牙关闭时可以在面板里直接打开。</li>
+</ul>
+
+<h2>低电量提醒</h2>
+<p>电量低于设定值时发一条通知，标题写明是什么设备。提醒的电量（10% 到 30%）和提示音都能调，设置里可以先发一条测试通知看看效果。</p>
+<figure class="shot"><img src="screenshots/notification.png" width="460" alt="islet 的低电量通知" loading="lazy"><figcaption>低电量通知</figcaption></figure>
+
+<div class="actions"><a class="btn primary" href="https://github.com/Buerxzhang/islet/releases/latest">免费下载 islet</a><a class="btn" href="./">了解 islet 的全部功能</a></div>
+</article>
+<section>
+<h2>islet 的其他功能</h2>
+<div class="grid">
+<a class="card" href="system-monitor.html"><strong>系统指标</strong><span>CPU、GPU、内存、网速、温度、功耗、风扇，一排看全，点开有走势和应用排行。</span></a>
+<a class="card" href="notch-island.html"><strong>刘海灵动岛</strong><span>刘海屏和普通屏都能用：平时是一排指标，有声音时展开封面和频谱。</span></a>
+<a class="card" href="music-spectrum.html"><strong>音乐与频谱</strong><span>支持常见的音乐播放器，频谱跟着封面变色。</span></a>
+<a class="card" href="smooth-scroll.html"><strong>鼠标平滑滚动</strong><span>让有刻度的鼠标滚轮滚得像触控板一样顺滑，触控板不受影响。</span></a>
+<a class="card" href="hidpi.html"><strong>外接屏 HiDPI</strong><span>一键为 2K、带鱼屏添加 HiDPI 档位，文字更细腻，切换分辨率也更直观。</span></a>
+</div>
+</section>
+</main>
+
+<footer><div class="wrap">
+islet · 菜单栏里的灵动岛 · 免费开源（MIT） · <a href="https://github.com/Buerxzhang/islet">GitHub</a> · <a href="https://github.com/Buerxzhang/islet/issues">反馈问题</a>
+</div></footer>
+</body>
+</html>

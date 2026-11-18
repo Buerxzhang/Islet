@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mac 菜单栏怎么显示 CPU、内存、网速和温度 - islet</title>
+<meta name="description" content="用免费开源的 islet：它把 CPU、GPU、内存、磁盘、网速、温度、功耗和风扇转速收进菜单栏的一枚胶囊里，常看的数字一眼就能看到；点开任意一项，是带走势图和应用排行的详细面板。">
+<link rel="canonical" href="https://buerxzhang.github.io/islet/system-monitor.html">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Mac 菜单栏怎么显示 CPU、内存、网速和温度 - islet">
+<meta property="og:description" content="用免费开源的 islet：它把 CPU、GPU、内存、磁盘、网速、温度、功耗和风扇转速收进菜单栏的一枚胶囊里，常看的数字一眼就能看到；点开任意一项，是带走势图和应用排行的详细面板。">
+<meta property="og:url" content="https://buerxzhang.github.io/islet/system-monitor.html">
+<meta property="og:image" content="https://buerxzhang.github.io/islet/screenshots/hero.png">
+<link rel="icon" href="icon.png">
+<link rel="stylesheet" href="style.css">
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "Mac 菜单栏怎么显示 CPU、内存、网速和温度", "acceptedAnswer": {"@type": "Answer", "text": "用免费开源的 islet：它把 CPU、GPU、内存、磁盘、网速、温度、功耗和风扇转速收进菜单栏的一枚胶囊里，常看的数字一眼就能看到；点开任意一项，是带走势图和应用排行的详细面板。"}}]}</script>
+</head>
+<body>
+<header class="top"><div class="wrap">
+<a class="brand" href="./"><img src="icon.png" alt="">islet</a>
+<nav class="top"><a class="hide-sm" href="./#features">功能</a><a class="hide-sm" href="./#faq">常见问题</a><a href="https://github.com/Buerxzhang/islet">GitHub</a><a href="https://github.com/Buerxzhang/islet/releases/latest">下载</a></nav>
+</div></header>
+<main class="wrap">
+<article>
+<div class="crumb"><a href="./">islet</a> / 系统指标</div>
+<h1>Mac 菜单栏怎么显示 CPU、内存、网速和温度</h1>
+<div class="answer"><p>用免费开源的 islet：它把 CPU、GPU、内存、磁盘、网速、温度、功耗和风扇转速收进菜单栏的一枚胶囊里，常看的数字一眼就能看到；点开任意一项，是带走势图和应用排行的详细面板。</p></div>
+<figure class="shot bar"><img src="screenshots/island-desktop-metrics.png" width="760" alt="菜单栏里的 islet：CPU、GPU、内存、功耗、风扇、网速和蓝牙电量"><figcaption>菜单栏里的 islet：CPU、GPU、内存、功耗、风扇、网速和蓝牙电量</figcaption></figure>
+
+<h2>能看到哪些数字</h2>
+<ul>
+<li><strong>CPU、GPU</strong>：占用率，性能核与能效核分开统计。</li>
+<li><strong>内存</strong>：已用内存、内存压力和交换。</li>
+<li><strong>网速</strong>：上传和下载，也可以只显示两者中较快的一方。</li>
+<li><strong>温度、功耗、风扇</strong>：CPU、GPU、硬盘等传感器的温度，整机功耗，风扇转速。</li>
+<li><strong>磁盘</strong>：读写速度、启动盘用量，NVMe 硬盘的 SMART 状态。</li>
+<li><strong>帧率</strong>（可选）：前台窗口所在屏幕每秒画面变化的次数。</li>
+</ul>
+<p>显示哪些指标、按什么顺序排，都可以在设置里拖动调整；不想看的项目可以一键隐藏。</p>
+
+<h2>点开是详细面板</h2>
+<p>每个指标都有自己的面板，提供 5 分钟、1 小时、24 小时三个走势视图。CPU、GPU、内存、磁盘读写、功耗和网速都有应用排行，一眼找到是谁在占资源，鼠标移上去还能直接结束它。</p>
+<figure class="shot"><img src="screenshots/cpu.png" width="320" alt="islet 的 CPU 面板：走势和应用排行" loading="lazy"><figcaption>CPU 面板</figcaption></figure>
+<ul>
+<li><strong>网速</strong>：每个应用的实时流量，今日和本月流量（每月从哪天算起可以设置，方便对齐运营商账单），公网 IP、Wi-Fi 信号和延迟。</li>
+<li><strong>功耗</strong>：整机功耗、电池健康度和循环次数；「保持唤醒」可以让电脑 30 分钟、2 小时或一直不休眠。</li>
+<li><strong>风扇</strong>：按功耗列出发热来源；支持的机型可以按固定转速、温度曲线或规则调速，转速不会低于安全下限。</li>
+</ul>
+
+<h2>怎么用</h2>
+<ol>
+<li>到 <a href="https://github.com/Buerxzhang/islet/releases/latest">下载页</a> 下载 <code>islet.zip</code>，解压后把 islet.app 拖进「应用程序」。</li>
+<li>打开 islet，菜单栏里会出现一枚胶囊，默认显示常用指标。</li>
+<li>点胶囊上的任意一项看详细面板；在设置的「灵动岛」页增减、排序指标。</li>
+</ol>
+
+<div class="actions"><a class="btn primary" href="https://github.com/Buerxzhang/islet/releases/latest">免费下载 islet</a><a class="btn" href="./">了解 islet 的全部功能</a></div>
+</article>
+<section>
+<h2>islet 的其他功能</h2>
+<div class="grid">
+<a class="card" href="notch-island.html"><strong>刘海灵动岛</strong><span>刘海屏和普通屏都能用：平时是一排指标，有声音时展开封面和频谱。</span></a>
+<a class="card" href="music-spectrum.html"><strong>音乐与频谱</strong><span>支持常见的音乐播放器，频谱跟着封面变色。</span></a>
+<a class="card" href="bluetooth-battery.html"><strong>蓝牙电量</strong><span>每台设备一个电量圆环，低电量自动提醒，点一下就能连接或断开。</span></a>
+<a class="card" href="smooth-scroll.html"><strong>鼠标平滑滚动</strong><span>让有刻度的鼠标滚轮滚得像触控板一样顺滑，触控板不受影响。</span></a>
+<a class="card" href="hidpi.html"><strong>外接屏 HiDPI</strong><span>一键为 2K、带鱼屏添加 HiDPI 档位，文字更细腻，切换分辨率也更直观。</span></a>
+</div>
+</section>
+</main>
+
+<footer><div class="wrap">
+islet · 菜单栏里的灵动岛 · 免费开源（MIT） · <a href="https://github.com/Buerxzhang/islet">GitHub</a> · <a href="https://github.com/Buerxzhang/islet/issues">反馈问题</a>
+</div></footer>
+</body>
+</html>

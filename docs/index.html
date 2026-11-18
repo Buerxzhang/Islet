@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>islet：免费开源的 Mac 菜单栏灵动岛</title>
+<meta name="description" content="islet 是免费开源的 Mac 菜单栏工具：在菜单栏显示 CPU、内存、网速、温度等系统指标，正在播放的音乐和实时频谱，蓝牙耳机键盘鼠标电量，还支持鼠标平滑滚动和外接显示器 HiDPI。">
+<link rel="canonical" href="https://buerxzhang.github.io/islet/">
+<meta property="og:type" content="website">
+<meta property="og:title" content="islet：免费开源的 Mac 菜单栏灵动岛">
+<meta property="og:description" content="islet 是免费开源的 Mac 菜单栏工具：在菜单栏显示 CPU、内存、网速、温度等系统指标，正在播放的音乐和实时频谱，蓝牙耳机键盘鼠标电量，还支持鼠标平滑滚动和外接显示器 HiDPI。">
+<meta property="og:url" content="https://buerxzhang.github.io/islet/">
+<meta property="og:image" content="https://buerxzhang.github.io/islet/screenshots/hero.png">
+<link rel="icon" href="icon.png">
+<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="desktop.css">
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "SoftwareApplication", "name": "islet", "operatingSystem": "macOS 14 或更新版本", "applicationCategory": "UtilitiesApplication", "description": "免费开源的 Mac 菜单栏灵动岛：系统指标、音乐频谱、蓝牙电量，以及鼠标平滑滚动和外接显示器 HiDPI。", "offers": {"@type": "Offer", "price": "0", "priceCurrency": "CNY"}, "downloadUrl": "https://github.com/Buerxzhang/islet/releases/latest", "url": "https://buerxzhang.github.io/islet/", "image": "https://buerxzhang.github.io/islet/screenshots/hero.png", "license": "https://opensource.org/licenses/MIT"}</script>
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "islet 免费吗？", "acceptedAnswer": {"@type": "Answer", "text": "免费，开源，使用 MIT 许可证，源代码在 GitHub 上公开。"}}, {"@type": "Question", "name": "支持哪些 Mac？", "acceptedAnswer": {"@type": "Answer", "text": "支持 Apple 芯片和 Intel，需要 macOS 14 或更新版本；实时频谱需要 macOS 14.2 或更新版本。刘海屏 MacBook 和外接显示器都能用。"}}, {"@type": "Question", "name": "第一次打开提示「无法验证开发者」怎么办？", "acceptedAnswer": {"@type": "Answer", "text": "在「应用程序」里右键 islet，选「打开」；或者到「系统设置 → 隐私与安全性」点「仍要打开」。"}}, {"@type": "Question", "name": "会收集我的数据吗？", "acceptedAnswer": {"@type": "Answer", "text": "不收集、不上传任何使用数据。只在查询公网 IP、测量延迟、检查和下载更新、查询 GitHub 标星数时联网；画频谱只读取电脑播放的声音，不录麦克风。"}}, {"@type": "Question", "name": "怎么更新？", "acceptedAnswer": {"@type": "Answer", "text": "在 islet 设置的「关于」页检查更新：先下载，下载好后再点重启完成更新，设置会保留。"}}]}</script>
+</head>
+<body>
+<header class="top"><div class="wrap">
+<a class="brand" href="./" data-win="about"><img src="icon.png" alt=""><svg class="mark" viewBox="152 362 720 300" aria-hidden="true"><mask id="m"><rect x="152" y="362" width="720" height="300" rx="150" fill="#fff"/><circle cx="324" cy="512" r="80" fill="#000"/><path d="M458 512H542L589 582L655 430L701 512H772" fill="none" stroke="#000" stroke-width="40" stroke-linecap="round" stroke-linejoin="round"/></mask><rect x="152" y="362" width="720" height="300" rx="150" fill="currentColor" mask="url(#m)"/></svg>islet</a>
+<nav class="top">
+<div class="mmenu"><a href="#features">功能</a><div class="drop">
+<a href="system-monitor.html">系统指标</a>
+<a href="notch-island.html">刘海灵动岛</a>
+<a href="music-spectrum.html">音乐与频谱</a>
+<a href="bluetooth-battery.html">蓝牙电量</a>
+<a href="smooth-scroll.html">鼠标平滑滚动</a>
+<a href="hidpi.html">外接屏 HiDPI</a>
+<hr><a href="#features">全部功能</a></div></div>
+<a href="#faq" data-win="faq">常见问题</a><a href="https://github.com/Buerxzhang/islet" target="_blank" rel="noopener">GitHub</a><a href="https://github.com/Buerxzhang/islet/releases/latest">下载</a>
+</nav>
+<div class="mright"><span class="island-mount"></span><button class="mi" data-pop="sound" aria-label="声音"><svg viewBox="0 0 24 24"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16.5 9a4 4 0 0 1 0 6M19 6.5a8 8 0 0 1 0 11"/></svg></button><button class="mi" data-pop="notif" aria-label="通知"><svg viewBox="0 0 24 24"><path d="M6 16v-5a6 6 0 0 1 12 0v5l2 2H4zM10 21h4"/></svg></button><span class="mi mdate"></span><span class="mi mtime"></span></div>
+</div></header>
+<main class="wrap desktop">
+<section class="win" id="about"><div class="tb"><span class="tl r" title="关闭"></span><span class="tl y" title="关闭"></span><span class="tl g" title="放大"></span><span class="ttl">关于 islet</span></div><div class="wcontent">
+<div class="hero">
+<img class="icon" src="icon.png" alt="islet 图标">
+<h1>islet：Mac 菜单栏里的灵动岛</h1>
+<p class="lead">免费开源的 macOS 菜单栏工具。CPU、内存、网速这些常看的数字，正在播放的音乐和频谱，蓝牙耳机、键盘、鼠标的电量，都收进菜单栏里的一枚胶囊。</p>
+<div class="actions"><a class="btn primary" href="https://github.com/Buerxzhang/islet/releases/latest">免费下载</a><a class="btn" href="https://github.com/Buerxzhang/islet" target="_blank" rel="noopener">在 GitHub 查看源码</a></div>
+<p class="meta">支持 Apple 芯片和 Intel · macOS 14 或更新版本 · MIT 开源</p>
+<p class="meta desk-only">试试点右上角菜单栏里的灵动岛 · 示例数据</p>
+</div>
+<figure class="shot page-only"><img src="screenshots/hero.png" width="860" alt="菜单栏里的 islet，下面是点开后的音乐和网速面板"></figure>
+
+<section>
+<h2>islet 是什么</h2>
+<p>islet 是一个 macOS 菜单栏工具，把系统指标、音乐和蓝牙电量合进一枚“灵动岛”胶囊。平时它只是一排指标；电脑里有声音时，胶囊向左展开出封面和频谱；点开任意一项，是更详细的面板。刘海屏 MacBook 和外接显示器都能用，也可以悬浮在刘海正下方。</p>
+<p>设置里的「扩展功能」还提供两个常用小工具：让外接鼠标像触控板一样顺滑地滚动，以及为 2K、带鱼屏这类外接显示器开启 HiDPI。</p>
+</section>
+
+<section id="features">
+<h2>功能</h2>
+<div class="grid">
+<a class="card" href="system-monitor.html"><strong>Mac 菜单栏怎么显示 CPU、内存、网速和温度</strong><span>CPU、GPU、内存、网速、温度、功耗、风扇，一排看全，点开有走势和应用排行。</span></a>
+<a class="card" href="notch-island.html"><strong>Mac 上有类似 iPhone 灵动岛的软件吗</strong><span>刘海屏和普通屏都能用：平时是一排指标，有声音时展开封面和频谱。</span></a>
+<a class="card" href="music-spectrum.html"><strong>Mac 菜单栏显示正在播放的音乐和实时频谱</strong><span>支持常见的音乐播放器，频谱跟着封面变色。</span></a>
+<a class="card" href="bluetooth-battery.html"><strong>Mac 菜单栏怎么直接看到蓝牙耳机、键盘、鼠标的电量</strong><span>每台设备一个电量圆环，低电量自动提醒，点一下就能连接或断开。</span></a>
+<a class="card" href="smooth-scroll.html"><strong>Mac 外接鼠标滚轮一卡一卡的，怎么像触控板一样顺滑</strong><span>让有刻度的鼠标滚轮滚得像触控板一样顺滑，触控板不受影响。</span></a>
+<a class="card" href="hidpi.html"><strong>Mac 外接 2K 显示器字体发虚，怎么开启 HiDPI</strong><span>一键为 2K、带鱼屏添加 HiDPI 档位，文字更细腻，切换分辨率也更直观。</span></a>
+</div>
+</section>
+</div></section>
+
+<section class="win closed" id="faq"><div class="tb"><span class="tl r" title="关闭"></span><span class="tl y" title="关闭"></span><span class="tl g" title="放大"></span><span class="ttl">常见问题</span></div><div class="wcontent">
+<h2>常见问题</h2>
+<details><summary>islet 免费吗？</summary><p>免费，开源，使用 MIT 许可证，源代码在 GitHub 上公开。</p></details>
+<details><summary>支持哪些 Mac？</summary><p>支持 Apple 芯片和 Intel，需要 macOS 14 或更新版本；实时频谱需要 macOS 14.2 或更新版本。刘海屏 MacBook 和外接显示器都能用。</p></details>
+<details><summary>第一次打开提示「无法验证开发者」怎么办？</summary><p>在「应用程序」里右键 islet，选「打开」；或者到「系统设置 → 隐私与安全性」点「仍要打开」。</p></details>
+<details><summary>会收集我的数据吗？</summary><p>不收集、不上传任何使用数据。只在查询公网 IP、测量延迟、检查和下载更新、查询 GitHub 标星数时联网；画频谱只读取电脑播放的声音，不录麦克风。</p></details>
+<details><summary>怎么更新？</summary><p>在 islet 设置的「关于」页检查更新：先下载，下载好后再点重启完成更新，设置会保留。</p></details>
+</div></section>
+
+<section class="win feature closed" id="feature"><div class="tb"><span class="tl r" title="关闭"></span><span class="tl y" title="关闭"></span><span class="tl g" title="放大"></span><span class="ttl">功能</span></div><div class="wcontent"></div></section>
+</main>
+<nav class="dock" aria-label="程序坞（装饰）"></nav>
+<script src="desktop.js" defer></script>
+
+<footer><div class="wrap">
+islet · 菜单栏里的灵动岛 · 免费开源（MIT） · <a href="https://github.com/Buerxzhang/islet">GitHub</a> · <a href="https://github.com/Buerxzhang/islet/issues">反馈问题</a>
+</div></footer>
+</body>
+</html>
