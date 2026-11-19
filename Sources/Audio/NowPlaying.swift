@@ -61,6 +61,7 @@ final class NowPlayingMonitor: ObservableObject {
     private var artworkPendingSince: Date?   // 切歌后新封面还没到的时刻
     private var clearWork: DispatchWorkItem?
     private var pauseWork: DispatchWorkItem?
+    private var artworkWork: DispatchWorkItem?   // 沿用的旧封面到期后清掉
     private var pausedSince: Date?                 // 播放器开始报告“暂停”的时刻
     private var userPausedAt = Date.distantPast   // 刚用我们的按钮暂停：立即显示，不做防抖
 
@@ -82,7 +83,15 @@ final class NowPlayingMonitor: ObservableObject {
         running = false
         process?.terminate()
         process = nil
+        // 延时任务一并取消，否则过一会儿会把旧的播放信息写回来
         clearWork?.cancel()
+        pauseWork?.cancel()
+        artworkWork?.cancel()
+        clearWork = nil
+        pauseWork = nil
+        artworkWork = nil
+        pausedSince = nil
+        artworkPendingSince = nil
         info = nil
     }
 
@@ -160,15 +169,29 @@ final class NowPlayingMonitor: ObservableObject {
         if let cache = artworkCache {
             if cache.id == artworkID {
                 artworkPendingSince = nil
+                artworkWork?.cancel()
+                artworkWork = nil
                 next.artwork = cache.image
                 next.tint = cache.tint
             } else if info?.artwork != nil {
                 // 切歌时新封面通常晚一点才到：最多 3 秒内先沿用上一张，避免封面消失又出现、面板和菜单栏宽度跳动
                 let since = artworkPendingSince ?? Date()
                 artworkPendingSince = since
-                if Date().timeIntervalSince(since) < 3 {
+                let left = 3 - Date().timeIntervalSince(since)
+                if left > 0 {
                     next.artwork = cache.image
                     next.tint = cache.tint
+                    // 之后没有新的更新也要按时清掉（这首歌可能本来就没有封面），不能一直显示上一首的
+                    let stale = cache.image
+                    artworkWork?.cancel()
+                    let work = DispatchWorkItem { [weak self] in
+                        guard let self, var current = self.info, current.artwork === stale else { return }
+                        current.artwork = nil
+                        current.tint = nil
+                        self.info = current
+                    }
+                    artworkWork = work
+                    DispatchQueue.main.asyncAfter(deadline: .now() + left, execute: work)
                 }
             }
         }

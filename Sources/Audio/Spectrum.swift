@@ -34,6 +34,8 @@ final class SpectrumAnalyzer {
 
     private(set) var error: String?
     var isRunning: Bool { procID != nil }
+    /// 截取用作时钟的输出设备（UID）；输出设备换了要重建截取。
+    private(set) var deviceUID: String?
 
     // MARK: 截取
 
@@ -62,6 +64,7 @@ final class SpectrumAnalyzer {
         aggregateID = AudioObjectID(kAudioObjectUnknown)
         if #available(macOS 14.2, *), tapID != kAudioObjectUnknown { AudioHardwareDestroyProcessTap(tapID) }
         tapID = AudioObjectID(kAudioObjectUnknown)
+        deviceUID = nil
         samples.withLock { $0 = [Float](repeating: 0, count: Self.fftSize) }
         smoothed = [Float](repeating: 0, count: Self.bandCount)
     }
@@ -104,6 +107,7 @@ final class SpectrumAnalyzer {
         var device = AudioObjectID(kAudioObjectUnknown)
         try check(AudioHardwareCreateAggregateDevice(aggregate as CFDictionary, &device))
         aggregateID = device
+        deviceUID = outputUID
 
         // 4. 实时回调：只取第一个声道，追加到环形缓冲（尽量少做事）
         let store = samples
@@ -126,10 +130,11 @@ final class SpectrumAnalyzer {
         try check(AudioDeviceStart(device, proc))
     }
 
-    private static func defaultOutputUID() throws -> String {
+    /// 当前的声音输出设备（不是“提示音”输出设备：两者可以不同，拔掉的那个可能正好是提示音设备）。
+    static func defaultOutputUID() throws -> String {
         var device = AudioObjectID(kAudioObjectUnknown)
         var size = UInt32(MemoryLayout<AudioObjectID>.size)
-        var address = AudioObjectPropertyAddress(mSelector: kAudioHardwarePropertyDefaultSystemOutputDevice,
+        var address = AudioObjectPropertyAddress(mSelector: kAudioHardwarePropertyDefaultOutputDevice,
                                                  mScope: kAudioObjectPropertyScopeGlobal, mElement: kAudioObjectPropertyElementMain)
         try check(AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject), &address, 0, nil, &size, &device))
         var uid: Unmanaged<CFString>?
@@ -847,7 +852,31 @@ final class SpectrumController: NSObject, NSPopoverDelegate {
             self?.showNowPlaying(info)
         }
         started = true
+        watchOutputDevice()
         apply()
+    }
+
+    /// 输出设备换了（插拔耳机、外接声卡、切换输出）：截取以旧设备为时钟，设备拔掉后会停住，重建一次。
+    /// 通知会连着来好几次：等 1 秒安静下来再看，设备没变就不动。
+    private var outputWork: DispatchWorkItem?
+    private lazy var outputListener: AudioObjectPropertyListenerBlock = { [weak self] _, _ in
+        self?.outputWork?.cancel()
+        let work = DispatchWorkItem { self?.restartCaptureIfNeeded() }
+        self?.outputWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1, execute: work)
+    }
+
+    private func watchOutputDevice() {
+        let system = AudioObjectID(kAudioObjectSystemObject)
+        AudioSystem.listen(system, kAudioHardwarePropertyDefaultOutputDevice, kAudioObjectPropertyScopeGlobal, outputListener)
+        AudioSystem.listen(system, kAudioHardwarePropertyDevices, kAudioObjectPropertyScopeGlobal, outputListener)
+    }
+
+    private func restartCaptureIfNeeded() {
+        guard Self.isEnabled, timer != nil, analyzer.isRunning,
+              let uid = try? SpectrumAnalyzer.defaultOutputUID(), uid != analyzer.deviceUID else { return }
+        analyzer.stop()
+        startCapture()
     }
 
     func setEnabled(_ enabled: Bool) {
@@ -1118,7 +1147,8 @@ final class SpectrumController: NSObject, NSPopoverDelegate {
     }
 
     private func tick() {
-        guard analyzer.isRunning, let barsView else { return }
+        // 截取没在运行（没权限、出错）也照常走：电平全是 0，靠“正在播放”决定是否显示
+        guard let barsView else { return }
         var (levels, audible) = analyzer.analyze()
         // 其他程序的声音设为不显示时：当作没有声音
         if !updateSource(audible: audible) { audible = false }
@@ -1145,6 +1175,8 @@ final class SpectrumController: NSObject, NSPopoverDelegate {
         let revealing = revealUntil.map { $0 > Date() } ?? false
         // 播放器还在“播放中”（切歌间隙、安静段落）不隐藏；暂停 / 停止后安静超过设定时间才隐藏
         let playing = NowPlayingMonitor.shared.info?.playing == true
+        // 播放器报告正在播放、却截不到声音（没有“系统录音”权限、系统静音、音量为 0）：照样展开封面和按钮，频谱是平的
+        if playing, source == nil, !shown { shown = true }
         let delay = Self.hideDelay
         if delay > 0, quietFor > delay, !playing, !showingPanel, !revealing {
             if shown { shown = false }

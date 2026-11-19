@@ -6,6 +6,7 @@
 // adapter_command：发送媒体控制命令，命令编号取自环境变量 NP_COMMAND（0 播放、1 暂停、2 播放/暂停、4 下一首、5 上一首）。
 
 #import <Foundation/Foundation.h>
+#include <CommonCrypto/CommonDigest.h>
 #include <dlfcn.h>
 #include <unistd.h>
 
@@ -45,6 +46,16 @@ static void supportedCommands(void (^done)(NSArray *)) {
 }
 
 static NSString *lastArtworkID;
+
+/// 封面的编号：播放器没给编号时用整张图的摘要。
+/// 不能用 NSData 的 hash：它只看开头几十个字节，同一个播放器给的 JPEG 开头往往一样，换了封面也算成同一张。
+static NSString *artworkDigest(NSData *data) {
+    unsigned char digest[CC_SHA256_DIGEST_LENGTH];
+    CC_SHA256(data.bytes, (CC_LONG)data.length, digest);
+    NSMutableString *text = [NSMutableString string];
+    for (int i = 0; i < 8; i++) [text appendFormat:@"%02x", digest[i]];
+    return text;
+}
 static pid_t parentPID;
 
 static void emit(void) {
@@ -76,7 +87,7 @@ static void emit(void) {
             if (bundle) out[@"bundle"] = bundle;
             // 封面只在变化时输出（几十 KB），其余时候只带编号
             NSData *artwork = info[@"kMRMediaRemoteNowPlayingInfoArtworkData"];
-            NSString *artworkID = out[@"artworkID"] ?: (artwork ? [NSString stringWithFormat:@"%lu", (unsigned long)artwork.hash] : nil);
+            NSString *artworkID = out[@"artworkID"] ?: ([artwork isKindOfClass:[NSData class]] && artwork.length > 0 ? artworkDigest(artwork) : nil);
             if ([artwork isKindOfClass:[NSData class]] && artwork.length > 0 && ![artworkID isEqual:lastArtworkID]) {
                 out[@"artwork"] = [artwork base64EncodedStringWithOptions:0];
                 lastArtworkID = artworkID;
