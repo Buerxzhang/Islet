@@ -85,7 +85,7 @@ enum RenderTargets {
     }
 
     /// README 用：灵动岛的各种状态，每种一张图（3 倍），画在菜单栏底色上。
-    /// --render islandstates <输出目录>
+    /// --render islandstates <输出目录> [split]（split：画成分体胶囊，新装默认的样子）
     private static func islandStates(_ launchArguments: [String]) {
         let dir = URL(fileURLWithPath: launchArguments[3], isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
@@ -151,6 +151,7 @@ enum RenderTargets {
         }
         for state in states {
             let view = MetricsIslandView(frame: .zero)
+            view.split = launchArguments.contains("split")
             view.segments = state.segments
             view.trailing = state.trailing
             var bars: SpectrumBarsView?
