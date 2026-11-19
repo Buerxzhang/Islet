@@ -103,8 +103,11 @@ final class MetricsIslandView: NSView {
         didSet {
             needsDisplay = true
             needsLayout = true
-            guard (oldValue == nil) != (trailing == nil) else { return }
+            // 连上 / 断开某个设备：图像变宽 / 变窄（电量变化宽度不变，不做过渡）
+            guard (oldValue == nil) != (trailing == nil) || oldValue?.size.width != trailing?.size.width else { return }
             leaving[.trailing] = trailing == nil ? oldValue : nil
+            // 新旧两张都有：过渡中旧图淡出、新图淡入
+            replacedTrailing = trailing == nil ? nil : oldValue
             beginTransition()
         }
     }
@@ -319,6 +322,8 @@ final class MetricsIslandView: NSView {
     }
     /// 正在淡出的项：已从数据里去掉，留着图像画完消失过渡。
     private var leaving: [Slot: NSImage] = [:]
+    /// 蓝牙设备增减时被换下的旧图像（过渡中和新图像交叉淡入淡出）。
+    private var replacedTrailing: NSImage?
     private var transition: Snapshot?           // 过渡起点
     private var transitionProgress: CGFloat = 1
     private var transitionTimer: Timer?
@@ -415,6 +420,7 @@ final class MetricsIslandView: NSView {
         transition = nil
         transitionProgress = 1
         leaving.removeAll()
+        replacedTrailing = nil
     }
 
     /// 此刻画出来的各项（视图坐标，从左到右）。
@@ -598,9 +604,17 @@ final class MetricsIslandView: NSView {
             guard let image else { continue }
             NSGraphicsContext.saveGraphicsState()
             item.rect.clip()
-            image.draw(in: NSRect(x: item.rect.minX, y: (item.rect.midY - image.size.height / 2).rounded(),
-                                  width: image.size.width, height: image.size.height),
-                       from: .zero, operation: .sourceOver, fraction: item.alpha)
+            func put(_ image: NSImage, _ fraction: CGFloat) {
+                image.draw(in: NSRect(x: item.rect.minX, y: (item.rect.midY - image.size.height / 2).rounded(),
+                                      width: image.size.width, height: image.size.height),
+                           from: .zero, operation: .sourceOver, fraction: fraction)
+            }
+            if item.slot == .trailing, let old = replacedTrailing {
+                put(old, item.alpha * (1 - transitionProgress))
+                put(image, item.alpha * transitionProgress)
+            } else {
+                put(image, item.alpha)
+            }
             NSGraphicsContext.restoreGraphicsState()
         }
     }

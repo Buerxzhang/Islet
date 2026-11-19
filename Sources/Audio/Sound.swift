@@ -154,6 +154,32 @@ struct BluetoothDevice: Identifiable, Equatable {
     let symbol: String
 }
 
+/// 电量文字（如 55%、L80 R75 盒60）拆开：耳机分左 / 右 / 充电盒，其他设备只有一个值。
+struct BatteryParts {
+    var left: Int?
+    var right: Int?
+    var box: Int?
+    var main: Int?
+
+    init?(_ text: String?) {
+        guard let text else { return nil }
+        for part in text.split(separator: " ") {
+            if part.hasPrefix("L") { left = Int(part.dropFirst()) }
+            else if part.hasPrefix("R") { right = Int(part.dropFirst()) }
+            else if part.hasPrefix("盒") { box = Int(part.dropFirst()) }
+            else { main = Int(part.trimmingCharacters(in: CharacterSet(charactersIn: "%"))) }
+        }
+        if left == nil, right == nil, box == nil, main == nil { return nil }
+    }
+
+    /// 是不是分左右耳的耳机（AirPods 等）。
+    var isEarbuds: Bool { left != nil || right != nil }
+    /// 设备本身的电量：耳机取左右耳较低的一边，其他取唯一的值（只有充电盒电量时算没有）。
+    var level: Int? { [left, right].compactMap { $0 }.min() ?? main }
+    /// 左右耳那一行，如 “L80 R75”。
+    var earsText: String { [left.map { "L\($0)" }, right.map { "R\($0)" }].compactMap { $0 }.joined(separator: " ") }
+}
+
 enum BluetoothSystem {
     private typealias SetPower = @convention(c) (Int32) -> Void
     private typealias GetPower = @convention(c) () -> Int32
@@ -173,7 +199,7 @@ enum BluetoothSystem {
     }
 
     /// 设备列表与系统“蓝牙”设置一致：读 system_profiler（系统有缓存，约 0.05 秒），
-    /// 只保留有设备类型的（键盘、耳机、手柄等），手机和没有名字的设备不列。
+    /// 只保留有设备类型的（键盘、耳机、手柄等）；手机和没有类型的设备（系统给的类型是 “None”）不列。
     static func devices() -> [BluetoothDevice] {
         let task = Process()
         let pipe = Pipe()
@@ -187,18 +213,23 @@ enum BluetoothSystem {
         guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let controller = (root["SPBluetoothDataType"] as? [[String: Any]])?.first else { return [] }
         let bleBatteries = BLEBattery.shared.levels
-        var result: [BluetoothDevice] = []
+        var result: [BluetoothDevice] = [], usesBLE = false
         for (key, connected) in [("device_connected", true), ("device_not_connected", false)] {
             for entry in controller[key] as? [[String: Any]] ?? [] {
                 for (name, value) in entry {
                     guard let info = value as? [String: Any], let minor = info["device_minorType"] as? String,
-                          let address = info["device_address"] as? String else { continue }
-                    let battery = batteryText(info) ?? (connected ? bleBatteries[name].map { "\($0)%" } ?? classicBattery(address) : nil)
-                    result.append(BluetoothDevice(id: address, name: name, connected: connected, battery: battery, symbol: symbol(minor)))
+                          minor.lowercased() != "none", let address = info["device_address"] as? String else { continue }
+                    let symbol = symbol(minor, vendor: info["device_vendorID"] as? String, product: info["device_productID"] as? String, name: name)
+                    guard symbol != "iphone" else { continue }
+                    let ble = connected ? bleBatteries[name] : nil
+                    if ble != nil { usesBLE = true }
+                    let battery = batteryText(info) ?? (connected ? ble.map { "\($0)%" } ?? classicBattery(address) : nil)
+                    result.append(BluetoothDevice(id: address, name: name, connected: connected, battery: battery, symbol: symbol))
                 }
             }
         }
-        if result.contains(where: { $0.connected && $0.battery == nil }) { BLEBattery.shared.refresh() }
+        // 有设备的电量来自 BLE（要定期重读，否则一直是第一次读到的数），或还没读到电量：重新读一次（BLEBattery 里限频）
+        if usesBLE || result.contains(where: { $0.connected && $0.battery == nil }) { BLEBattery.shared.refresh() }
         return result.sorted { ($0.connected ? 0 : 1, $0.name) < ($1.connected ? 0 : 1, $1.name) }
     }
 
@@ -226,7 +257,8 @@ enum BluetoothSystem {
         return nil
     }
 
-    private static func symbol(_ minor: String) -> String {
+    private static func symbol(_ minor: String, vendor: String?, product: String?, name: String) -> String {
+        if let headphone = appleHeadphone(vendor: vendor, product: product, name: name) { return headphone }
         switch minor.lowercased() {
         case "keyboard": return "keyboard"
         case "mouse": return "computermouse"
@@ -237,6 +269,40 @@ enum BluetoothSystem {
         case "phone", "smartphone", "cellular": return "iphone"
         default: return "dot.radiowaves.left.and.right"
         }
+    }
+
+    /// AirPods / Beats 按型号用对应的图标：先看苹果的产品 ID，认不出时看名字；系统没有这个图标时退回普通耳机。
+    private static func appleHeadphone(vendor: String?, product: String?, name: String) -> String? {
+        let lower = name.lowercased()
+        let apple = vendor?.lowercased() == "0x004c"
+        guard apple || lower.contains("airpods") || lower.contains("beats") else { return nil }
+        let id = Int((product ?? "").replacingOccurrences(of: "0x", with: ""), radix: 16) ?? 0
+        let symbol: String?
+        switch id {
+        case 0x200A, 0x201F: symbol = "airpodsmax"
+        case 0x200E, 0x2014, 0x2024: symbol = "airpodspro"
+        case 0x2013, 0x2019, 0x201B: symbol = "airpods.gen3"
+        case 0x2002, 0x200F: symbol = "airpods"
+        case 0x200B, 0x201D: symbol = "beats.powerbeatspro"
+        case 0x2011, 0x2016: symbol = "beats.studiobuds"
+        case 0x2012: symbol = "beats.fitpro"
+        default:
+            symbol = lower.contains("airpods max") ? "airpodsmax"
+                : lower.contains("airpods pro") ? "airpodspro"
+                : lower.contains("airpods") ? "airpods"
+                : lower.contains("powerbeats") ? "beats.powerbeatspro"
+                : lower.contains("studio buds") ? "beats.studiobuds"
+                : lower.contains("fit pro") ? "beats.fitpro"
+                : lower.contains("beats") ? "beats.headphones"
+                : nil
+        }
+        guard let symbol else { return nil }
+        return NSImage(systemSymbolName: symbol, accessibilityDescription: nil) != nil ? symbol : "headphones"
+    }
+
+    /// 是不是耳机类图标（AirPods、Beats 和普通耳机）。
+    static func isHeadphone(_ symbol: String) -> Bool {
+        symbol == "headphones" || symbol.hasPrefix("airpods") || symbol.hasPrefix("beats")
     }
 
     /// 连接 / 断开（同步调用，可能要几秒，放在后台线程）。
@@ -264,8 +330,12 @@ final class BLEBattery: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate
         return storage
     }
 
+    private var lastScan = Date.distantPast
+
+    /// 重新读一遍已连接设备的电量；最多每分钟一次（设备列表每 3 / 30 秒刷新一次，不用每次都读）。
     func refresh() {
         queue.async {
+            guard Date().timeIntervalSince(self.lastScan) >= 60 else { return }
             guard let manager = self.manager else {
                 self.manager = CBCentralManager(delegate: self, queue: self.queue)
                 return
@@ -276,6 +346,7 @@ final class BLEBattery: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate
 
     private func scan(_ manager: CBCentralManager) {
         guard manager.state == .poweredOn else { return }
+        lastScan = Date()
         for peripheral in manager.retrieveConnectedPeripherals(withServices: [Self.service]) {
             peripherals[peripheral.identifier] = peripheral
             peripheral.delegate = self
@@ -432,12 +503,10 @@ struct BluetoothPanelView: View {
                     ForEach(connected) { device in
                         Button { model.tap(device) } label: {
                             VStack(spacing: 7) {
-                                DeviceRing(symbol: device.symbol, level: Self.level(device.battery), busy: model.busy.contains(device.id))
+                                DeviceRing(symbol: device.symbol, level: SoundController.batteryLevel(device.battery), busy: model.busy.contains(device.id))
                                     .frame(width: 52, height: 52)
                                 Text(device.name).font(Typo.caption).foregroundStyle(p.text2).lineLimit(1).truncationMode(.middle)
-                                Text(model.confirming == device.id ? "再点断开" : (device.battery ?? "—"))
-                                    .font(model.confirming == device.id ? Typo.captionMedium : Typo.number(13, .semibold))
-                                    .foregroundStyle(model.confirming == device.id ? p.hot : p.text)
+                                batteryText(p, device)
                             }
                             .frame(maxWidth: .infinity)
                             .contentShape(Rectangle())
@@ -454,13 +523,18 @@ struct BluetoothPanelView: View {
         Text(text).font(Typo.caption).foregroundStyle(p.text3).frame(maxWidth: .infinity, alignment: .center).padding(.vertical, 8)
     }
 
-    /// 电量文字取数值：耳机取左右耳较低的一边。
-    static func level(_ text: String?) -> Int? {
-        guard let text else { return nil }
-        let parts = text.split(separator: " ")
-        let ears = parts.filter { $0.hasPrefix("L") || $0.hasPrefix("R") }.compactMap { Int($0.dropFirst()) }
-        if !ears.isEmpty { return ears.min() }
-        return parts.compactMap { Int($0.trimmingCharacters(in: CharacterSet(charactersIn: "%盒"))) }.first
+    /// 圆环下面的电量：AirPods 等分两行，上面左右耳、下面充电盒；其他设备一行百分比。
+    @ViewBuilder private func batteryText(_ p: Palette, _ device: BluetoothDevice) -> some View {
+        if model.confirming == device.id {
+            Text("再点断开").font(Typo.captionMedium).foregroundStyle(p.hot)
+        } else if let parts = BatteryParts(device.battery), parts.isEarbuds {
+            VStack(spacing: 1) {
+                Text(parts.earsText).font(Typo.number(13, .semibold)).foregroundStyle(p.text)
+                if let box = parts.box { Text("盒 \(box)%").font(Typo.caption).foregroundStyle(p.text3) }
+            }
+        } else {
+            Text(device.battery ?? "—").font(Typo.number(13, .semibold)).foregroundStyle(p.text)
+        }
     }
 }
 
@@ -612,15 +686,13 @@ final class SoundController: NSObject, NSPopoverDelegate {
     /// 蓝牙面板打开 / 关闭（灵动岛据此点亮那一段）。
     var onBluetoothPanel: (Bool) -> Void = { _ in }
 
-    /// 启动菜单栏蓝牙：每 30 秒刷新一次；设备连接 / 断开时立即刷新。
+    /// 启动蓝牙监视（岛上显示蓝牙或开着低电量提醒时）：每 30 秒刷新一次；设备连接 / 断开时立即刷新。
     func startBluetoothItem() {
         bluetoothTimer?.invalidate()
         bluetoothTimer = nil
-        guard Self.showsBluetoothItem else {
-            bluetoothKey = ""
-            onBluetoothImage(nil)
-            return
-        }
+        bluetoothKey = ""
+        if !Self.showsBluetoothItem { onBluetoothImage(nil) }
+        guard Self.showsBluetoothItem || AlertCenter.lowBatteryEnabled else { return }
         if !watchingGamepads { watchingGamepads = true; watchGamepads() }
         refreshBluetooth()
         let timer = Timer(timeInterval: 30, repeats: true) { [weak self] _ in self?.refreshBluetooth() }
@@ -634,13 +706,23 @@ final class SoundController: NSObject, NSPopoverDelegate {
     private var connectNotification: IOBluetoothUserNotification?
 
     @objc private func deviceConnected(_ notification: IOBluetoothUserNotification, device: IOBluetoothDevice) {
-        device.register(forDisconnectNotification: self, selector: #selector(deviceDisconnected(_:device:)))
+        watchDisconnect(device)
         DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in self?.refreshBluetooth() }
     }
 
     @objc private func deviceDisconnected(_ notification: IOBluetoothUserNotification, device: IOBluetoothDevice) {
         notification.unregister()
+        disconnectWatched.remove(Self.addressKey(device.addressString ?? ""))
         DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in self?.refreshBluetooth() }
+    }
+
+    /// 已注册断开通知的设备（地址）：启动前就连着的设备也要注册，断开时才能马上刷新。
+    private var disconnectWatched: Set<String> = []
+    private static func addressKey(_ address: String) -> String { address.lowercased().replacingOccurrences(of: ":", with: "-") }
+
+    private func watchDisconnect(_ device: IOBluetoothDevice) {
+        guard disconnectWatched.insert(Self.addressKey(device.addressString ?? "")).inserted else { return }
+        device.register(forDisconnectNotification: self, selector: #selector(deviceDisconnected(_:device:)))
     }
 
     /// 系统拿不到电量的已连接设备：有索尼控制通道就用它查（结果缓存，过期才重查）。
@@ -686,25 +768,23 @@ final class SoundController: NSObject, NSPopoverDelegate {
         return capable
     }
 
-    /// 电量文字取数值：耳机取左右耳较低的一边，其他取第一个百分比。
-    static func batteryLevel(_ text: String?) -> Int? {
-        guard let text else { return nil }
-        let parts = text.split(separator: " ")
-        let ears = parts.filter { $0.hasPrefix("L") || $0.hasPrefix("R") }.compactMap { Int($0.dropFirst()) }
-        if !ears.isEmpty { return ears.min() }
-        return parts.compactMap { Int($0.trimmingCharacters(in: CharacterSet(charactersIn: "%盒"))) }.first
-    }
+    /// 电量文字取数值：耳机取左右耳较低的一边，其他取唯一的百分比。
+    static func batteryLevel(_ text: String?) -> Int? { BatteryParts(text)?.level }
 
+    /// 岛上的蓝牙图像 + 低电量提醒。岛上不显示蓝牙时照样检查电量，提醒不受影响。
     private func publishBluetoothImage() {
-        guard Self.showsBluetoothItem else { return }
+        let shows = Self.showsBluetoothItem
         let connected = panel.allDevices.filter { $0.connected && !panel.hiddenDevices.contains($0.id) }
         let devices = connected.map { (symbol: $0.symbol, battery: Self.batteryLevel($0.battery)) }
-        let key = panel.bluetoothOn ? devices.map { "\($0.symbol)\($0.battery ?? -1)" }.joined(separator: "|") : "off"
+        let key = "\(shows)" + (panel.bluetoothOn ? connected.map { "\($0.symbol)\($0.battery ?? "-")" }.joined(separator: "|") : "off")
         guard key != bluetoothKey else { return }
         bluetoothKey = key
-        onBluetoothImage(devices.isEmpty ? nil : StatusIcons.bluetooth(devices))
-        AlertCenter.shared.checkBatteries(connected.compactMap { device in
-            Self.batteryLevel(device.battery).map { (device.id, device.name, device.symbol, $0) }
+        onBluetoothImage(shows && !devices.isEmpty ? StatusIcons.bluetooth(devices) : nil)
+        // 充电盒单独提醒（标题带“充电盒”）
+        AlertCenter.shared.checkBatteries(connected.flatMap { device -> [(id: String, name: String, symbol: String, level: Int)] in
+            let parts = BatteryParts(device.battery)
+            return [parts?.level.map { (device.id, device.name, device.symbol, $0) },
+                    parts?.box.map { (device.id + "#case", "\(device.name) 充电盒", device.symbol, $0) }].compactMap { $0 }
         })
     }
 
@@ -811,6 +891,9 @@ final class SoundController: NSObject, NSPopoverDelegate {
             DispatchQueue.main.async {
                 guard let self else { return }
                 self.panel.bluetoothOn = on
+                for device in devices where device.connected && !self.disconnectWatched.contains(Self.addressKey(device.id)) {
+                    IOBluetoothDevice(addressString: device.id).map(self.watchDisconnect)
+                }
                 self.panel.allDevices = self.withSonyBattery(devices)
                 self.panel.bluetoothLoaded = true
                 self.publishBluetoothImage()
@@ -885,6 +968,7 @@ final class SoundController: NSObject, NSPopoverDelegate {
         model.allDevices = [
             BluetoothDevice(id: "1", name: "BKB02_1", connected: true, battery: "55%", symbol: "keyboard"),
             BluetoothDevice(id: "2", name: "WH-1000XM6", connected: true, battery: "70%", symbol: "headphones"),
+            BluetoothDevice(id: "4", name: "AirPods Pro", connected: true, battery: "L80 R75 盒60", symbol: "airpodspro"),
             BluetoothDevice(id: "3", name: "Xbox Wireless Controller", connected: false, battery: nil, symbol: "gamecontroller"),
         ]
         model.busy = ["2"]
@@ -918,15 +1002,17 @@ final class SonyBattery: NSObject, IOBluetoothRFCOMMChannelDelegate {
     private var timeout: DispatchWorkItem?
     var log: ((String) -> Void)?
     private var queue: [String] = []           // 等待查询的地址（一次只开一条通道）
-    private var failed: [String: Date] = [:]
+    private var failed: [String: (time: Date, count: Int)] = [:]
     var onUpdate: () -> Void = {}
 
     /// 有缓存就返回；过期（默认 5 分钟）就排队重新查询，查到后回调 onUpdate。
     func level(for address: String, maxAge: TimeInterval = 300) -> Int? {
         let cached = levels[address]
-        // 成功的结果按 maxAge 过期；失败的 30 秒后重试（刚连接时通道可能还没准备好）
+        // 成功的结果按 maxAge 过期；失败后 30 秒重试（刚连接时通道可能还没准备好），
+        // 连续失败就逐次加倍、最长 30 分钟（通道被手机上的索尼 App 占着时，不反复去抢）
+        let retry = failed[address].map { min(30 * pow(2, Double($0.count - 1)), 1800) } ?? 0
         let due = Date().timeIntervalSince(cached?.time ?? .distantPast) > maxAge
-            && Date().timeIntervalSince(failed[address] ?? .distantPast) > 30
+            && Date().timeIntervalSince(failed[address]?.time ?? .distantPast) > retry
         if due, !queue.contains(address), self.address != address || completion == nil {
             queue.append(address)
             next()
@@ -940,7 +1026,8 @@ final class SonyBattery: NSObject, IOBluetoothRFCOMMChannelDelegate {
         guard completion == nil, !queue.isEmpty else { return }
         let address = queue.removeFirst()
         query(address: address) { [weak self] level in
-            if level == nil { self?.failed[address] = Date() }   // 失败也记下时间，到期才重试
+            // 失败记下时间和次数，到期才重试；成功就清掉
+            if level == nil { self?.failed[address] = (Date(), (self?.failed[address]?.count ?? 0) + 1) } else { self?.failed[address] = nil }
             self?.onUpdate()
             DispatchQueue.main.async { self?.next() }
         }

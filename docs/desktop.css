@@ -226,6 +226,7 @@ html.desk .dock { display: flex; position: fixed; z-index: 9700; left: 50%; bott
 .bt-dev .big .g svg { width: 20px; height: 20px; stroke: var(--pn-text); fill: none; stroke-width: 1.5; }
 .bt-dev small { color: var(--pn-text2); display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .bt-dev b { font-size: 13px; }
+.bt-dev small.box { font-size: 11px; color: var(--pn-text3); }
 .bt-other { display: flex; align-items: center; gap: 10px; }
 .bt-other .di { width: 28px; height: 28px; border-radius: 50%; background: var(--pn-inset); display: grid; place-items: center; }
 .bt-other .di svg { width: 16px; height: 16px; stroke: var(--pn-text2); fill: none; stroke-width: 1.5; }

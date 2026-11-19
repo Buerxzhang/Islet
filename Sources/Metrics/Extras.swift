@@ -86,10 +86,9 @@ final class AlertCenter: NSObject, UNUserNotificationCenterDelegate {
         case "keyboard": return "键盘"
         case "computermouse": return "鼠标"
         case "hand.point.up.left": return "触控板"
-        case "headphones": return "耳机"
+        case _ where BluetoothSystem.isHeadphone(symbol): return "耳机"
         case "hifispeaker": return "音箱"
         case "gamecontroller": return "手柄"
-        case "iphone": return "手机"
         default: return nil
         }
     }

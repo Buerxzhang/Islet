@@ -26,6 +26,7 @@
     keyboard: '<rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M7 14h10"/>',
     mouse: '<rect x="7" y="3" width="10" height="18" rx="5"/><path d="M12 7v4"/>',
     headphones: '<path d="M4.5 14v-2a7.5 7.5 0 0 1 15 0v2"/><rect x="3.5" y="13" width="4" height="6.5" rx="1.5"/><rect x="16.5" y="13" width="4" height="6.5" rx="1.5"/>',
+    earbuds: '<path d="M7.5 4.5a3 3 0 0 1 3 3v11a1.5 1.5 0 0 1-3 0v-6a3 3 0 0 1 0-8zM16.5 4.5a3 3 0 0 0-3 3v11a1.5 1.5 0 0 0 3 0v-6a3 3 0 0 0 0-8z"/>',
     pad: '<path d="M7 8h10a4 4 0 0 1 3.9 4.9l-.8 3.6a2 2 0 0 1-3.5.8L15 15H9l-1.6 2.3a2 2 0 0 1-3.5-.8l-.8-3.6A4 4 0 0 1 7 8z"/><path d="M8 11v3M6.5 12.5h3"/>',
     speaker: '<rect x="3" y="7" width="18" height="10" rx="2"/><path d="M7 12h4"/>',
     monitor: '<rect x="3" y="4" width="18" height="12" rx="1.5"/><path d="M9 20h6M12 16v4"/>',
@@ -40,10 +41,12 @@
     keyboard: `<rect x="1.5" y="6" width="21" height="12.5" rx="2.6" fill="#fff"/><path d="M5.5 10h1.2M9.3 10h1.2M13.1 10h1.2M16.9 10h1.2M7.5 14.4h9" stroke="${K}" stroke-width="1.7" stroke-linecap="round"/>`,
     mouse: `<rect x="6.2" y="2" width="11.6" height="20" rx="5.8" fill="#fff"/><path d="M12 5.6v4" stroke="${K}" stroke-width="1.8" stroke-linecap="round"/>`,
     headphones: `<path d="M4.4 15v-2.6a7.6 7.6 0 0 1 15.2 0V15" fill="none" stroke="#fff" stroke-width="2.6"/><rect x="2.6" y="13.2" width="5.4" height="8" rx="2.2" fill="#fff"/><rect x="16" y="13.2" width="5.4" height="8" rx="2.2" fill="#fff"/>`,
+    earbuds: `<path d="M7.2 3.5a3.4 3.4 0 0 1 3.4 3.4v12.1a1.7 1.7 0 0 1-3.4 0v-6.1a3.4 3.4 0 0 1 0-9.4zM16.8 3.5a3.4 3.4 0 0 0-3.4 3.4v12.1a1.7 1.7 0 0 0 3.4 0v-6.1a3.4 3.4 0 0 0 0-9.4z" fill="#fff"/>`,
     pad: `<path d="M7 7h10a4.6 4.6 0 0 1 4.5 5.6l-.9 4.2a2.2 2.2 0 0 1-3.9.9L15.1 15.3H8.9l-1.6 2.4a2.2 2.2 0 0 1-3.9-.9l-.9-4.2A4.6 4.6 0 0 1 7 7z" fill="#fff"/><path d="M8 9.8v3.4M6.3 11.5h3.4" stroke="${K}" stroke-width="1.6" stroke-linecap="round"/><circle cx="15.8" cy="10.4" r="1.1" fill="${K}"/><circle cx="17.6" cy="12.6" r="1.1" fill="${K}"/>`,
     radio: `<circle cx="12" cy="12" r="2.4" fill="#fff"/><path d="M8.2 8.2a5.4 5.4 0 0 0 0 7.6M15.8 8.2a5.4 5.4 0 0 1 0 7.6M5 5a9.9 9.9 0 0 0 0 14M19 5a9.9 9.9 0 0 1 0 14" fill="none" stroke="#fff" stroke-width="2.3" stroke-linecap="round"/>`,
     trackpad: `<rect x="2.5" y="4.5" width="19" height="15" rx="2.6" fill="#fff"/>`,
   };
+  const btLevel = (d) => (d.ears ? Math.min(...d.ears) : d.level);
   const batteryColor = (v) => (v <= 20 ? "#ff3b30" : v <= 40 ? "#ff9500" : "#34c759");
   const ringSVG = (pct, size, stroke, color, track = "rgba(255,255,255,0.18)") => {
     const r = (size - stroke) / 2, c = 2 * Math.PI * r;
@@ -77,7 +80,8 @@
     bt: [
       { name: "Keys K2", icon: "keyboard", level: 82, on: true },
       { name: "Mouse M5", icon: "mouse", level: 15, on: true },
-      { name: "Buds Pro X", icon: "headphones", level: 38, on: true },
+      { name: "AirPods Pro", icon: "earbuds", ears: [38, 45], box: 60, on: true },   // 左右耳、充电盒分开读；圆环取较低的一边
+      { name: "Studio Headphones", icon: "headphones", level: 70, on: false },
       { name: "Game Pad", icon: "pad", level: 66, on: false },
       { name: "Pad Air", icon: "trackpad", level: 74, on: false },
     ],
@@ -173,7 +177,7 @@
     arrangeIsland(hidden);
     // 蓝牙：每台设备一个圆环，环是电量；读不到电量的只画灰色底环
     $(".island .bt").innerHTML = S.bt.filter((d) => d.on).map((d) =>
-      `<span class="ring">${ringSVG(d.level ?? 0, 16, 2, d.level == null ? "transparent" : batteryColor(d.level))}<svg class="g" viewBox="0 0 24 24">${SOLID[d.icon]}</svg></span>`).join("");
+      `<span class="ring">${ringSVG(btLevel(d) ?? 0, 16, 2, btLevel(d) == null ? "transparent" : batteryColor(btLevel(d)))}<svg class="g" viewBox="0 0 24 24">${SOLID[d.icon]}</svg></span>`).join("");
   }
   // 按设置里的顺序排列各项，“未显示”的不出现；分隔线跟在音乐旁边（音乐在最右时放在它左边）
   // 三个模块：音乐、系统指标（各项指标）、蓝牙电量。分体时相邻的同一模块合成一个小胶囊（.grp），合体时 .grp 不占位
@@ -449,10 +453,12 @@
       `<div class="pf"><span><b data-act="settings">样式设置</b></span><span><b data-act="quit">退出</b></span></div>`;
   }
 
+  // 圆环下面的电量：AirPods 这类分两行，上面左右耳、下面充电盒；其他设备一行百分比（和软件一致）
+  const btText = (d) => d.ears ? `<b>L${d.ears[0]} R${d.ears[1]}</b><small class="box">盒 ${d.box}%</small>` : `<b>${d.level == null ? "—" : d.level + "%"}</b>`;
   function btPanel() {
     const on = S.bt.filter((d) => d.on), off = S.bt.filter((d) => !d.on);
     return header('<svg viewBox="0 0 24 24" fill="none" stroke="#1a9bd7" stroke-width="1.8" stroke-linecap="round"><path d="M5 7a10 10 0 0 0 0 10M8.5 9.5a5 5 0 0 0 0 5M19 7a10 10 0 0 1 0 10M15.5 9.5a5 5 0 0 1 0 5"/><circle cx="12" cy="12" r="1.2" fill="#1a9bd7"/></svg>', "蓝牙") +
-      `<div class="pc"><div class="bt-top">${on.map((d) => `<div class="bt-dev" data-bt="${S.bt.indexOf(d)}" title="点击断开"><div class="big">${ringSVG(d.level ?? 0, 58, 5, d.level == null ? "transparent" : batteryColor(d.level), "var(--pn-inset)")}<div class="g">${svgIcon(d.icon)}</div></div><small>${d.name}</small><b>${d.level == null ? "—" : d.level + "%"}</b></div>`).join("") || '<div class="empty-bt">没有已连接的设备</div>'}</div></div>` +
+      `<div class="pc"><div class="bt-top">${on.map((d) => `<div class="bt-dev" data-bt="${S.bt.indexOf(d)}" title="点击断开"><div class="big">${ringSVG(btLevel(d) ?? 0, 58, 5, btLevel(d) == null ? "transparent" : batteryColor(btLevel(d)), "var(--pn-inset)")}<div class="g">${svgIcon(d.icon)}</div></div><small>${d.name}</small>${btText(d)}</div>`).join("") || '<div class="empty-bt">没有已连接的设备</div>'}</div></div>` +
       (off.length ? `<div class="sec">其他设备</div><div class="pc">${off.map((d) => `<div class="bt-other"><span class="di">${svgIcon(d.icon)}</span><span>${d.name}</span><button data-bt="${S.bt.indexOf(d)}">连接</button></div>`).join('<div style="height:8px"></div>')}</div>` : "") +
       `<div class="pf"><span>点设备连接 / 断开</span><span><b data-act="btsys">蓝牙设置</b><b data-act="quit">退出</b></span></div>`;
   }
@@ -735,7 +741,7 @@
   function applySettingChange() { applyTheme(); renderSettings(); renderIsland(); if (typeof scheduleTick === "function") scheduleTick(); }
   win.addEventListener("click", (e) => {
     if (e.target.closest("[data-test]")) {   // 蓝牙：发一条示例通知到通知中心
-      notes.unshift({ t: "键盘电量低", b: "Keys K2 剩余 18%（测试通知）", time: "刚刚" });
+      notes.unshift({ t: "键盘 Keys K2 电量低", b: "剩余 18%，记得充电（测试通知）", time: "刚刚" });
       togglePop("notif", $('[data-pop="notif"]'));
       return;
     }
@@ -1103,15 +1109,19 @@
     notif: h('<div class="pop" id="pop-notif"></div>'),
   };
   Object.values(pops).forEach((p) => root.appendChild(p));
-  const lowNotes = () => SET.btAlert ? S.bt.filter((d) => d.on && d.level != null && d.level <= parseInt(SET.btLevel))
-    .map((d) => ({ t: `${{ keyboard: "键盘", mouse: "鼠标", headphones: "耳机", pad: "手柄", trackpad: "触控板" }[d.icon] || "设备"}电量低`, b: `${d.name} 剩余 ${d.level}%，记得充电`, time: "刚刚", low: true })) : [];
+  // 低电量：设备本身（耳机取较低的一边）和充电盒分开提醒
+  const KIND = { keyboard: "键盘", mouse: "鼠标", headphones: "耳机", earbuds: "耳机", pad: "手柄", trackpad: "触控板" };
+  const lowNotes = () => !SET.btAlert ? [] : S.bt.filter((d) => d.on).flatMap((d) => [
+    [btLevel(d), d.name], [d.box, d.name + " 充电盒"],
+  ].filter(([v]) => v != null && v <= parseInt(SET.btLevel))
+    .map(([v, name]) => ({ t: `${KIND[d.icon] || "设备"} ${name} 电量低`, b: `剩余 ${v}%，记得充电`, time: "刚刚", low: true })));
   let notes = [
     { t: "CPU 温度持续偏高", b: "CPU 温度已高于 85° 超过 3 分钟", time: "12 分钟前" },
     { t: "已保持唤醒 2 小时", b: "保持唤醒已结束，电脑会照常睡眠", time: "1 小时前" },
   ];
   function renderPop(key) {
     if (key === "sound") {
-      const devices = [["speaker", "内置扬声器"], ["monitor", "外接显示器"], ["headphones", "Buds Pro X"]];
+      const devices = [["speaker", "内置扬声器"], ["monitor", "外接显示器"], ["earbuds", "AirPods Pro"]];
       pops.sound.innerHTML = `<h4>声音</h4><div class="pc"><div class="vol"><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M4 9h4l5-4v14l-5-4H4z"/></svg><input type="range" min="0" max="100" value="${S.vol}" aria-label="音量"><span>${S.vol}%</span></div></div>` +
         `<div class="sec">输出</div><div class="pc">${devices.map(([ic, n], i) => `<div class="dev${i === S.device ? " sel" : ""}" data-dev="${i}"><span class="di">${svgIcon(ic)}</span><span>${n}</span><span></span></div>`).join("")}</div>`;
     } else {

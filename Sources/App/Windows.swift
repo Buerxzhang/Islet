@@ -823,7 +823,10 @@ struct SettingsView: View {
         let sound = SoundController.shared.panel
         return detail(p) {
             detailRow(p, "低电量提醒", "电量低于下面的值时通知，标题带设备类型") {
-                toggle("alertLowBattery", default: true) { _ in AlertCenter.shared.prepare() }
+                toggle("alertLowBattery", default: true) { _ in
+                    AlertCenter.shared.prepare()
+                    SoundController.shared.startBluetoothItem()   // 岛上不显示蓝牙时，提醒要靠它定时读电量
+                }
             }
             if AlertCenter.lowBatteryEnabled {
                 detailRow(p, "提醒电量") {
