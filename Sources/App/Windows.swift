@@ -224,6 +224,10 @@ final class SettingsModel: ObservableObject {
 
     var onInstallFan: () -> Void = {}
     var onUninstallFan: () -> Void = {}
+    /// 风扇详情里内嵌的曲线编辑器、规则列表用到的数据（没有风扇时为 nil）。
+    var curveModel: CurveEditorModel?
+    var fanData: FanData?
+    var onActivateRules: () -> Void = {}
     var onCopyDiagnostics: () -> Void = {}
 
     func selection(_ setting: SpeedSetting) -> Int { setting.selection }
@@ -268,6 +272,20 @@ final class SettingsModel: ObservableObject {
     }
 
     func refresh() { revision += 1 }
+
+    /// 分体 / 合体胶囊。
+    func setSplit(_ on: Bool) {
+        UserDefaults.standard.set(on, forKey: MetricsIslandView.splitKey)
+        onMetricOrder()   // 重排灵动岛
+        refresh()
+    }
+
+    /// 整组显示 / 隐藏系统指标（各项自己的显示设置保留）。
+    func setMetricsShown(_ on: Bool) {
+        UserDefaults.standard.set(on, forKey: Metric.groupKey)
+        onChange(.cpuItem)   // 和单项开关走同一条路：重排灵动岛、按需开停采样
+        refresh()
+    }
 }
 
 struct SettingsView: View {
@@ -398,7 +416,7 @@ struct SettingsView: View {
         }
         section(p, "重置") {
             row(p, "恢复默认设置", "重置 islet 的应用偏好", icon: "arrow.uturn.backward.circle.fill", tint: Color(hex: 0x8E8E93)) {
-                PlainButton(title: "恢复默认…") {
+                PlainButton(title: "恢复默认") {
                     guard confirmAlert("恢复 islet 的默认设置？",
                                        "islet 会重新启动。流量统计、macOS 的显示器配置和系统权限会保留。") else { return }
                     model.onResetAll()
@@ -409,14 +427,8 @@ struct SettingsView: View {
 
     /// 灵动岛：位置、底色，以及岛上显示的内容（顺序与岛上一致，可展开各项设置）。
     @ViewBuilder private func menuBarPage(_ p: Palette) -> some View {
-        VStack(spacing: 10) {
-            MenuBarPreview(look: SpectrumLook.current, merged: true)
-                .frame(height: 36)
-            Text("预览（示例数据）").font(Typo.caption).foregroundStyle(p.text3)
-        }
-        .frame(maxWidth: .infinity)
         section(p, "胶囊") {
-            row(p, "全局悬浮", "将胶囊居中放在刘海或菜单栏下方", icon: "rectangle.on.rectangle", tint: Color(hex: 0x0A84FF)) {
+            row(p, "悬浮显示", "将胶囊居中放在刘海或菜单栏下方；刘海屏默认开启", icon: "rectangle.on.rectangle", tint: Color(hex: 0x0A84FF)) {
                 Toggle2(isOn: AppDelegate.floatsIsland, onChange: model.onFloatingIsland)
             }
             divider(p)
@@ -436,6 +448,22 @@ struct SettingsView: View {
                         model.refresh()
                     }
                 }
+            }
+            divider(p)
+            row(p, "分体胶囊", "音乐、系统指标、蓝牙电量三个模块各成一个小胶囊", icon: "square.split.2x1", tint: Color(hex: 0xBF5AF2)) {
+                Toggle2(isOn: MetricsIslandView.splits, onChange: model.setSplit)
+            }
+            divider(p)
+            row(p, "音乐", "播放时展开封面和频谱", icon: "waveform", tint: Color(hex: 0xFF375F)) {
+                Toggle2(isOn: model.isVisible("music")) { model.setVisible("music", $0) }
+            }
+            divider(p)
+            row(p, "系统指标", "CPU、内存、温度、网速等，具体项目在下方选择", icon: "gauge.with.dots.needle.33percent", tint: Color(hex: 0x30D158)) {
+                Toggle2(isOn: Metric.groupShown, onChange: model.setMetricsShown)
+            }
+            divider(p)
+            row(p, "蓝牙电量", "耳机、键盘、鼠标的电量圆环", icon: "headphones", tint: Color(hex: 0x0A84FF)) {
+                Toggle2(isOn: model.isVisible("bluetooth")) { model.setVisible("bluetooth", $0) }
             }
             divider(p)
             SpectrumLookEditor(look: SpectrumLook.current, part: .backdrop) { look in
@@ -658,7 +686,7 @@ struct SettingsView: View {
                 .frame(width: 190)
             }
             detailRow(p, "系统录音权限", "只读取播放的声音，不录麦克风") {
-                PlainButton(title: "打开权限设置…") {
+                PlainButton(title: "打开权限设置") {
                     if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_AudioCapture") {
                         NSWorkspace.shared.open(url)
                     }
@@ -711,7 +739,7 @@ struct SettingsView: View {
         return detail(p) {
             detailRow(p, "测量方式", "统计前台窗口所在屏幕每秒画面变化的次数（islet 自己不算）；画面静止时数字会变低，最高不超过屏幕刷新率") { EmptyView() }
             detailRow(p, "屏幕录制权限", authorized ? "已授权。只数画面变化，不保存、不上传画面" : "未授权：在系统设置里打开 islet 后重新启动 islet") {
-                PlainButton(title: authorized ? "已授权" : "打开权限设置…") {
+                PlainButton(title: authorized ? "已授权" : "打开权限设置") {
                     if !authorized { CGRequestScreenCaptureAccess() }
                     if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture") {
                         NSWorkspace.shared.open(url)
@@ -743,6 +771,24 @@ struct SettingsView: View {
                     fanClient.update { $0.basis = basis }
                 }
                 .frame(width: 170)
+            }
+            divider(p)
+            row(p, "温度曲线", fanClient.config.preset.map { "预设：\($0.label)" } ?? "自定义（\(fanClient.config.curve.count) 个控制点）",
+                icon: "chart.xyaxis.line", tint: Color(hex: 0x0A84FF)) {
+                if let curve = model.curveModel {
+                    editToggle("fanCurve") { curve.points = fanClient.config.curve; curve.selected = nil }
+                }
+            }
+            if let curve = model.curveModel, model.expanded.contains("fanCurve") {
+                CurveEditorView(model: curve, embedded: true).padding(.bottom, 10)
+            }
+            divider(p)
+            row(p, "规则", "\(fanClient.config.rules.count) 条 · 启用 \(fanClient.config.rules.filter(\.enabled).count) 条",
+                icon: "list.bullet.rectangle", tint: Color(hex: 0xBF5AF2)) {
+                editToggle("fanRules") {}
+            }
+            if model.expanded.contains("fanRules") {
+                RulesView(fan: model.fanData, embedded: true, onActivate: model.onActivateRules).padding(.bottom, 10)
             }
             divider(p)
             row(p, "控制组件", componentSubtitle, icon: "wrench.and.screwdriver.fill", tint: Color(hex: 0x8E8E93)) {
@@ -875,7 +921,7 @@ struct SettingsView: View {
             if smoothScroll.state == .permissionRequired || smoothScroll.state == .unavailable {
                 divider(p)
                 row(p, "辅助功能权限", "用来接管鼠标滚轮，只改变滚动的节奏", icon: "hand.raised.fill", tint: Color(hex: 0x8E8E93)) {
-                    PlainButton(title: "打开权限设置…", action: smoothScroll.openPermissionSettings)
+                    PlainButton(title: "打开权限设置", action: smoothScroll.openPermissionSettings)
                 }
             }
             if smoothScroll.enabled {
@@ -942,8 +988,8 @@ struct SettingsView: View {
         let current = display.current
         let hiDPI = hiDPISwitch(display)
         let options = displays.expanded.contains(display.id) ? display.allSizes : display.sizeOptions
-        // 没开 HiDPI 且正用原生分辨率时不列大小（只剩一个“原生的一半”，没什么可选）
-        let showSizes = display.canSwitch && options.count > 1 && !(hiDPI == .off && current.native && !current.hiDPI)
+        // 核心档位只有一个时也列出来：“更多分辨率”里还有普通分辨率可选
+        let showSizes = display.canSwitch && display.allSizes.count > 1
         let subtitle: String
         if !display.active {
             subtitle = "未启用"
@@ -953,7 +999,8 @@ struct SettingsView: View {
             // 第二行：镜像时说明为什么不能调；没开 HiDPI 时说明开关的作用；用 HiDPI 时给出实际渲染尺寸（普通模式等于分辨率，不重复）
             let note = display.mirrored ? "镜像中，解除镜像后可以单独调整"
                 : hiDPI == .off ? "开启 HiDPI 后文字更清晰，大小可调"
-                : current.hiDPI ? renderNote(current, display) : nil
+                : current.hiDPI ? renderNote(current, display)
+                : !current.native ? "普通分辨率，放大显示会发虚" : nil
             subtitle = note.map { "\(details)\n\($0)" } ?? details
         }
         return VStack(alignment: .leading, spacing: 0) {
@@ -984,9 +1031,11 @@ struct SettingsView: View {
 
     /// HiDPI 的渲染说明：渲染尺寸比屏幕像素大时要再缩小显示，提醒会多占 GPU；正好等于屏幕像素时最省也最清晰。
     private func renderNote(_ mode: DisplayManager.Mode, _ display: DisplayManager.Display) -> String {
-        guard let native = display.native, mode.pixelWidth > native.width + 8 else {
-            return "按屏幕原生像素绘制，最清晰"
+        guard let native = display.native else { return "" }
+        if mode.pixelWidth < native.width - 8 {
+            return "按 \(mode.renderingSize) 绘制后放大显示，会发虚"
         }
+        guard mode.pixelWidth > native.width + 8 else { return "按屏幕原生像素绘制，最清晰" }
         return "文字更清晰，显卡负担稍高（按 \(mode.renderingSize) 绘制）"
     }
 
@@ -1252,6 +1301,14 @@ struct SettingsView: View {
         .padding(.vertical, 6)
     }
 
+    /// 风扇详情里“编辑 / 收起”：就地展开编辑器。
+    private func editToggle(_ id: String, onOpen: @escaping () -> Void) -> some View {
+        let open = model.expanded.contains(id)
+        return PlainButton(title: open ? "收起" : "编辑") {
+            if open { model.expanded.remove(id) } else { onOpen(); model.expanded.insert(id) }
+        }
+    }
+
     private func divider(_ p: Palette) -> some View {
         Rectangle().fill(p.separator).frame(height: 1)
     }
@@ -1309,57 +1366,62 @@ final class CurveEditorModel: ObservableObject {
 
 struct CurveEditorView: View {
     @ObservedObject var model: CurveEditorModel
+    /// 内嵌在设置里：不要标题、外边距和固定宽度。
+    var embedded = false
     @ObservedObject var fanClient = FanHelperClient.shared
     private let domain: ClosedRange<Double> = 30...100
 
     var body: some View {
         Themed { p in
-            VStack(alignment: .leading, spacing: 14) {
-                HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    Text("温度曲线").font(.system(size: 20, weight: .semibold)).foregroundStyle(p.text)
-                    Text(fanClient.config.preset?.label ?? "自定义")
-                        .font(Typo.captionMedium).foregroundStyle(p.accentText)
-                        .padding(.horizontal, 7).padding(.vertical, 2)
-                        .background(Capsule().fill(p.accentFill.opacity(0.16)))
-                    Spacer()
-                    if let celsius = model.currentCelsius {
-                        Text("\(fanClient.config.basis == .peak ? "最热" : "均温") \(Int(celsius.rounded()))℃")
-                            .font(Typo.captionMedium).foregroundStyle(p.temperature(celsius))
-                            .padding(.horizontal, 8).padding(.vertical, 3)
-                            .background(Capsule().fill(p.inset))
+            VStack(alignment: .leading, spacing: embedded ? 10 : 14) {
+                if !embedded {
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        Text("温度曲线").font(.system(size: 20, weight: .semibold)).foregroundStyle(p.text)
+                        Text(fanClient.config.preset?.label ?? "自定义")
+                            .font(Typo.captionMedium).foregroundStyle(p.accentText)
+                            .padding(.horizontal, 7).padding(.vertical, 2)
+                            .background(Capsule().fill(p.accentFill.opacity(0.16)))
+                        Spacer()
+                        if let celsius = model.currentCelsius {
+                            Text("\(fanClient.config.basis == .peak ? "最热" : "均温") \(Int(celsius.rounded()))℃")
+                                .font(Typo.captionMedium).foregroundStyle(p.temperature(celsius))
+                                .padding(.horizontal, 8).padding(.vertical, 3)
+                                .background(Capsule().fill(p.inset))
+                        }
                     }
                 }
                 Text("拖动控制点改变温度到转速的映射；斜纹区域是安全下限，曲线拖不进去。")
                     .font(Typo.caption).foregroundStyle(p.text3)
+                    .fixedSize(horizontal: false, vertical: true)
 
                 chart(p)
-                    .frame(height: 300)
+                    .frame(height: embedded ? 220 : 300)
                     .background(RoundedRectangle(cornerRadius: 10).fill(p.card))
                     .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(p.cardStroke))
 
                 HStack(spacing: 8) {
-                    Text("预设").font(Typo.caption).foregroundStyle(p.text3)
+                    if !embedded { Text("预设").font(Typo.caption).foregroundStyle(p.text3) }
                     ForEach(CurvePreset.allCases, id: \.self) { preset in
                         presetCard(p, preset)
                     }
                 }
 
                 HStack(spacing: 8) {
-                    PlainButton(title: "在当前温度加点", systemImage: "plus.circle", action: model.addPointAtCurrent)
-                    PlainButton(title: "删除选中点", systemImage: "minus.circle",
+                    PlainButton(title: embedded ? "加点" : "在当前温度加点", systemImage: "plus.circle", action: model.addPointAtCurrent)
+                    PlainButton(title: embedded ? "删除" : "删除选中点", systemImage: "minus.circle",
                                 disabled: model.selected == nil || model.points.count <= 2, action: model.deleteSelected)
                     Spacer()
                     Text("\(model.points.count) 个控制点").font(Typo.caption).foregroundStyle(p.text3)
                     if fanClient.config.strategy != .curve {
-                        PlainButton(title: "使用曲线调速", prominent: true, action: model.onActivate)
+                        PlainButton(title: embedded ? "启用" : "使用曲线调速", prominent: true, action: model.onActivate)
                     } else {
                         Text("曲线调速中").font(Typo.captionMedium).foregroundStyle(p.accentText)
                     }
                 }
             }
-            .padding(22)
-            .frame(width: 640)
-            .background(p.panel)
+            .padding(embedded ? 0 : 22)
+            .frame(width: embedded ? nil : 640)
+            .background(embedded ? Color.clear : p.panel)
         }
     }
 
@@ -1368,7 +1430,7 @@ struct CurveEditorView: View {
         return Button { model.apply(preset) } label: {
             VStack(alignment: .leading, spacing: 2) {
                 Text(preset.label).font(Typo.bodyMedium).foregroundStyle(selected ? p.accentText : p.text)
-                Text(preset.detail).font(Typo.caption).foregroundStyle(p.text3).lineLimit(1)
+                if !embedded { Text(preset.detail).font(Typo.caption).foregroundStyle(p.text3).lineLimit(1) }
             }
             .padding(.horizontal, 10).padding(.vertical, 7)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -1498,17 +1560,20 @@ struct RulesView: View {
     let fan: FanData?
     /// 走查用：不包 ScrollView、不固定高度。
     var flat = false
+    /// 内嵌在设置里：不要标题、外边距和固定尺寸。
+    var embedded = false
     var onActivate: () -> Void = {}
 
     var body: some View {
         Themed { p in
             VStack(alignment: .leading, spacing: 14) {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("规则").font(.system(size: 20, weight: .semibold)).foregroundStyle(p.text)
+                    if !embedded { Text("规则").font(.system(size: 20, weight: .semibold)).foregroundStyle(p.text) }
                     Text("规则命中时把风扇提到指定转速；多条同时命中取最高；都未命中时交给系统。")
                         .font(Typo.caption).foregroundStyle(p.text3)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
-                if flat { ruleList(p) } else { ScrollView { ruleList(p) } }
+                if flat || embedded { ruleList(p) } else { ScrollView { ruleList(p) } }
                 HStack(spacing: 8) {
                     PlainButton(title: "添加规则", systemImage: "plus", disabled: fanClient.config.rules.count >= 16) {
                         let rpm = fan.map { ($0.minimum + ($0.maximum - $0.minimum) * 0.6).rounded() } ?? 3000
@@ -1522,9 +1587,9 @@ struct RulesView: View {
                     }
                 }
             }
-            .padding(22)
-            .frame(width: 580, height: flat ? nil : 440)
-            .background(p.panel)
+            .padding(embedded ? 0 : 22)
+            .frame(width: embedded ? nil : 580, height: flat || embedded ? nil : 440)
+            .background(embedded ? Color.clear : p.panel)
         }
     }
 
@@ -1551,20 +1616,13 @@ struct RulesView: View {
                             Button(name) { edit(rule) { $0.group = name } }
                         }
                     }
-                    .frame(width: 96)
+                    .frame(width: embedded ? 130 : 96)
                     Menu(rule.peak ? "最高" : "平均") {
                         Button("平均") { edit(rule) { $0.peak = false } }
                         Button("最高") { edit(rule) { $0.peak = true } }
                     }
-                    .frame(width: 56)
-                    Text("≥").font(Typo.body).foregroundStyle(p.text2)
-                    Stepper2(value: rule.threshold, step: 1, range: 20...120, unit: "℃", width: 30) { value in
-                        edit(rule) { $0.threshold = value }
-                    }
-                    Text("→").font(Typo.body).foregroundStyle(p.text2)
-                    Stepper2(value: rule.rpm, step: 100, range: (fan?.minimum ?? 0)...(fan?.maximum ?? 10000), unit: "转", width: 40) { value in
-                        edit(rule) { $0.rpm = value }
-                    }
+                    .frame(width: embedded ? 72 : 56)
+                    if !embedded { valueControls(p, rule) }
                     Spacer(minLength: 0)
                     Button { fanClient.update { $0.rules.removeAll { $0.id == rule.id } } } label: {
                         Image(systemName: "trash").font(.system(size: 12)).foregroundStyle(p.text3)
@@ -1572,6 +1630,7 @@ struct RulesView: View {
                     .buttonStyle(.plain)
                     .help("删除规则")
                 }
+                if embedded { valueControls(p, rule).padding(.leading, 36) }
                 HStack(spacing: 6) {
                     if triggered {
                         Text("已触发").font(Typo.captionMedium).foregroundStyle(p.accentText)
@@ -1585,6 +1644,20 @@ struct RulesView: View {
             }
         }
         .opacity(rule.enabled ? 1 : 0.6)
+    }
+
+    /// 阈值和目标转速；内嵌在设置里时放到第二行。
+    private func valueControls(_ p: Palette, _ rule: FanRule) -> some View {
+        HStack(spacing: 6) {
+            Text("≥").font(Typo.body).foregroundStyle(p.text2)
+            Stepper2(value: rule.threshold, step: 1, range: 20...120, unit: "℃", width: 30) { value in
+                edit(rule) { $0.threshold = value }
+            }
+            Text("→").font(Typo.body).foregroundStyle(p.text2)
+            Stepper2(value: rule.rpm, step: 100, range: (fan?.minimum ?? 0)...(fan?.maximum ?? 10000), unit: "转", width: 40) { value in
+                edit(rule) { $0.rpm = value }
+            }
+        }
     }
 
     private func edit(_ rule: FanRule, _ change: @escaping (inout FanRule) -> Void) {

@@ -82,13 +82,11 @@ final class PanelModel: ObservableObject {
     @Published var ejecting: Set<String> = []
 
     var onSettings: () -> Void = {}
-    var onHide: () -> Void = {}
     var onDiagnostics: () -> Void = {}
     var onQuit: () -> Void = {}
     var onSelectStrategy: (FanStrategy) -> Void = { _ in }
     var onFixedCommit: (Double) -> Void = { _ in }
-    var onOpenCurve: () -> Void = {}
-    var onOpenRules: () -> Void = {}
+    var onSelectPreset: (CurvePreset) -> Void = { _ in }
     var onToggleExpanded: () -> Void = {}
     var onQuitApp: (RankRowData) -> Void = { _ in }
     var onForceQuit: (RankRowData) -> Void = { _ in }
@@ -281,12 +279,6 @@ struct PanelView: View {
                 .frame(width: 20)
             Text(model.metric.panelTitle).font(Typo.title).foregroundStyle(p.text)
             Spacer()
-            Button(action: model.onHide) {
-                Image(systemName: "eye.slash").font(.system(size: 13)).foregroundStyle(p.text2)
-                    .frame(width: 24, height: 24).contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .help("从岛上隐藏（可在设置里重新显示）")
             Button(action: model.onSettings) {
                 Image(systemName: "gearshape").font(.system(size: 13)).foregroundStyle(p.text2)
                     .frame(width: 24, height: 24).contentShape(Rectangle())
@@ -630,26 +622,28 @@ struct PanelView: View {
                         }
                         Text("温度超过 \(Int(FanSafety.floorStart))℃ 时会按安全下限自动提速").font(Typo.caption).foregroundStyle(p.text3)
                     case .curve:
+                        // 弹窗只做快速切换；编辑曲线在设置 → 风扇里
                         HStack(alignment: .center) {
                             VStack(alignment: .leading, spacing: 2) {
-                                Text(config.preset.map { "预设：\($0.label)" } ?? "自定义曲线（\(config.curve.count) 个控制点）")
-                                    .font(Typo.bodyMedium).foregroundStyle(p.text)
-                                Text(config.preset?.detail ?? "按温度连续调速").font(Typo.caption).foregroundStyle(p.text3)
+                                Text("曲线预设").font(Typo.bodyMedium).foregroundStyle(p.text)
+                                Text(config.preset?.detail ?? "自定义曲线（\(config.curve.count) 个控制点）")
+                                    .font(Typo.caption).foregroundStyle(p.text3)
                             }
                             Spacer()
-                            PlainButton(title: "编辑曲线…", action: model.onOpenCurve)
+                            Menu(config.preset?.label ?? "自定义") {
+                                ForEach(CurvePreset.allCases, id: \.self) { preset in
+                                    Button(preset.label) { model.onSelectPreset(preset) }
+                                }
+                            }
+                            .frame(width: 80)
                         }
                     case .rules:
                         let enabled = config.rules.filter(\.enabled).count
                         let triggered = status?.triggered.count ?? 0
-                        HStack {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("\(config.rules.count) 条规则 · 启用 \(enabled) 条").font(Typo.bodyMedium).foregroundStyle(p.text)
-                                Text(triggered > 0 ? "已触发 \(triggered) 条，取最高转速" : "都未触发时由系统控制")
-                                    .font(Typo.caption).foregroundStyle(triggered > 0 ? p.accentText : p.text3)
-                            }
-                            Spacer()
-                            PlainButton(title: "编辑规则…", action: model.onOpenRules)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("\(config.rules.count) 条规则 · 启用 \(enabled) 条").font(Typo.bodyMedium).foregroundStyle(p.text)
+                            Text(triggered > 0 ? "已触发 \(triggered) 条，取最高转速" : "都未触发时由系统控制；规则在设置里编辑")
+                                .font(Typo.caption).foregroundStyle(triggered > 0 ? p.accentText : p.text3)
                         }
                     }
                     if config.strategy != .auto, let conflict = fanClient.conflict {
@@ -855,11 +849,7 @@ struct KeepAwakeCard: View {
                         Text(keepAwake.duration == .always ? "电脑不自动睡眠，重启 islet 后也保持" : "电脑不自动睡眠，适合下载、渲染")
                             .font(Typo.caption).foregroundStyle(p.text3)
                         HStack {
-                            VStack(alignment: .leading, spacing: 1) {
-                                Text("屏幕也保持常亮").font(Typo.body).foregroundStyle(p.text)
-                                Text("关闭时屏幕照常熄灭")
-                                    .font(Typo.caption).foregroundStyle(p.text3)
-                            }
+                            Text("屏幕常亮").font(Typo.body).foregroundStyle(p.text)
                             Spacer()
                             Toggle2(isOn: keepAwake.keepDisplayOn) { keepAwake.setKeepDisplayOn($0) }
                         }

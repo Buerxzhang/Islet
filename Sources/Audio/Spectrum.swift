@@ -371,6 +371,8 @@ final class SpectrumBarsView: NSView {
     private var showsControls: Bool { look.controls && hasMedia }
     /// 右侧圆形图标：音乐模式跟随播放按钮；其他程序发声时单独显示它的图标。
     private var showsIcon: Bool { appIcon != nil && (showsControls || !hasMedia) }
+    /// 最右边是圆形的播放器图标（排在胶囊右端时让它和圆头同心）。
+    var trailsWithCircle: Bool { showsIcon }
 
     /// 菜单栏项需要的宽度。
     var preferredWidth: CGFloat {
@@ -810,7 +812,6 @@ final class SpectrumController: NSObject, NSPopoverDelegate {
     var openSettings: () -> Void = {}
     /// 右键菜单（设置、关于、退出），由主程序提供。
     var showContextMenu: (NSView) -> Void = { _ in }
-    private var scrollMonitor: Any?
 
     /// 安静多久后隐藏（秒）；0 表示一直显示。
     static var hideDelay: TimeInterval {
@@ -829,7 +830,6 @@ final class SpectrumController: NSObject, NSPopoverDelegate {
         popover.animates = false
         popover.delegate = self
         panel.onLook = { [weak self] in self?.setLook($0) }
-        panel.onHide = { [weak self] in self?.setEnabled(false) }
         panel.onPrivacy = { [weak self] in self?.openPrivacy() }
         panel.onSettings = { [weak self] in
             self?.popover.performClose(nil)
@@ -973,8 +973,6 @@ final class SpectrumController: NSObject, NSPopoverDelegate {
             analyzer.stop()
             NowPlayingMonitor.shared.stop()
             if let item { NSStatusBar.system.removeStatusItem(item) }
-            if let scrollMonitor { NSEvent.removeMonitor(scrollMonitor) }
-            scrollMonitor = nil
             item = nil
             barsView?.removeFromSuperview()
             barsView = nil
@@ -993,7 +991,6 @@ final class SpectrumController: NSObject, NSPopoverDelegate {
             embeddedShown = Self.hideDelay == 0
             showNowPlaying(NowPlayingMonitor.shared.info)
             host.spectrumLayoutChanged()
-            installScrollMonitor()
         }
         if host == nil, item == nil {
             let item = NSStatusBar.system.statusItem(withLength: ceil(SpectrumBarsView.contentWidth) + 6)
@@ -1012,25 +1009,10 @@ final class SpectrumController: NSObject, NSPopoverDelegate {
             self.item = item
             showNowPlaying(NowPlayingMonitor.shared.info)
             resize()
-            installScrollMonitor()
         }
         startCapture()
         NowPlayingMonitor.shared.start()
         schedule(fast: false)
-    }
-
-    /// 鼠标停在频谱上滚动：调音量（滚轮一格约 3%，触控板按滑动距离）
-    private func installScrollMonitor() {
-        if let scrollMonitor { NSEvent.removeMonitor(scrollMonitor) }
-        scrollMonitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { [weak self] event in
-            guard let self, let barsView = self.barsView, let window = barsView.window, event.window === window,
-                  barsView.bounds.contains(barsView.convert(event.locationInWindow, from: nil)) else { return event }
-            var dy = Float(event.scrollingDeltaY)
-            if event.isDirectionInvertedFromDevice { dy = -dy }
-            let delta = event.hasPreciseScrollingDeltas ? dy * 0.004 : dy * 0.03
-            if delta != 0 { SoundController.shared.nudgeVolume(delta) }
-            return nil
-        }
     }
 
     /// 在后台线程启动截取：首次会弹出“系统录音”权限请求，系统在用户点选之前不会返回，

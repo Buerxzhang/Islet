@@ -123,6 +123,12 @@ html.desk .dock { display: flex; position: fixed; z-index: 9700; left: 50%; bott
 .music .app-ic { width: 16px; height: 16px; border-radius: 50%; margin-left: 7px; flex: none; background: linear-gradient(160deg, #ff6b81, #e0193f); box-shadow: 0 0 0 1px rgba(255,255,255,0.45); display: grid; place-items: center; }
 .music .app-ic svg { width: 11px; height: 11px; }
 .divider { width: 1px; height: 12px; background: rgba(255,255,255,0.18); margin: 0 5px; }
+/* 分体胶囊：音乐、系统指标、蓝牙电量各成一个小胶囊；合体时分组不占位 */
+.grp { display: contents; }
+.island.split { padding: 0; gap: 5px; box-shadow: none; }
+.island.split .grp { display: flex; align-items: center; height: 22px; padding: 0 3px; border-radius: 12px; background: var(--ibg, #000); box-shadow: 0 0 0 0.5px rgba(255,255,255,0.22); }
+.island.split.float { box-shadow: none; }
+.island.split.float .grp { box-shadow: 0 8px 24px rgba(0,0,0,0.35), 0 0 0 0.5px rgba(255,255,255,0.22); }
 .metric { flex-direction: column; justify-content: center; align-items: center; line-height: 1; padding: 0 3px; margin: 0 1px; }
 .metric b { font-size: 7px; letter-spacing: 0.06em; color: rgba(255,255,255,0.55); font-weight: 700; }
 .metric span { font-size: 10.5px; font-weight: 700; font-stretch: condensed; font-variant-numeric: tabular-nums; margin-top: 2px; letter-spacing: -0.01em; }
@@ -300,7 +306,10 @@ html.desk .win.settings > .tb .ttl { color: var(--pn-text2); }
 .settings .note { margin: 4px 0 6px; color: var(--pn-text3); font-size: 11px; line-height: 1.6; }
 .settings .reset { text-align: right; margin-top: 10px; }
 .settings .reset a { color: var(--pn-text2); font-weight: 500; text-decoration: none; }
-.settings .modes { display: flex; gap: 6px; padding: 8px 0 6px; }
+.settings .modes { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; padding: 8px 0 6px; }
+.settings .mode i { display: block; font-style: normal; font-size: 10px; color: var(--pn-text3); opacity: 0.7; }
+.settings .modes-more { text-align: right; font-size: 11px; padding-bottom: 6px; }
+.settings .modes-more a { color: var(--pn-accent-text); text-decoration: none; }
 .settings .mode { flex: 1; text-align: center; border-radius: 8px; background: var(--pn-bg); padding: 8px 2px; font-size: 11px; }
 .settings .mode b { display: block; font-weight: 600; font-size: 12px; }
 .settings .mode small { color: var(--pn-text3); }
@@ -380,9 +389,18 @@ html.desk .win.settings > .tb .ttl { color: var(--pn-text2); }
 .ctxmenu { display: none; position: fixed; z-index: 9900; min-width: 210px; padding: 5px; font-size: 13px; color: var(--pn-text); border-radius: 9px;
   background: rgba(246, 246, 250, 0.86); backdrop-filter: blur(30px); -webkit-backdrop-filter: blur(30px); box-shadow: 0 12px 34px rgba(0,0,0,0.3), 0 0 0 0.5px rgba(0,0,0,0.2); }
 .ctxmenu.show { display: block; }
-.ctxmenu > div { display: flex; align-items: center; padding: 4px 10px 4px 4px; border-radius: 5px; cursor: default; }
-.ctxmenu > div[data-m]:hover { background: #2f7cf6; color: #fff; }
-.ctxmenu > div.dis { color: var(--pn-text3); }
+.ctxmenu div:not(.sub) { display: flex; align-items: center; padding: 4px 10px 4px 4px; border-radius: 5px; cursor: default; white-space: nowrap; }
+.ctxmenu div[data-m]:hover, .ctxmenu .has-sub:hover { background: #2f7cf6; color: #fff; }
+.ctxmenu div.dis { color: var(--pn-text3); }
+.ctxmenu div.hd { font-size: 11px; color: var(--pn-text3); padding: 3px 10px 1px; }
+/* 「显示内容」子菜单：悬停展开，右边放不下时往左开 */
+.ctxmenu .has-sub { position: relative; }
+.ctxmenu .sub { display: none; position: absolute; top: -5px; left: 100%; min-width: 190px; padding: 5px; border-radius: 9px; color: var(--pn-text);
+  background: rgba(246, 246, 250, 0.94); box-shadow: 0 12px 34px rgba(0,0,0,0.3), 0 0 0 0.5px rgba(0,0,0,0.2); }
+.ctxmenu.flip .sub { left: auto; right: 100%; }
+.ctxmenu .has-sub:hover .sub { display: block; }
+html.pn-dark .ctxmenu { background: rgba(40, 40, 44, 0.86); box-shadow: 0 12px 34px rgba(0,0,0,0.45), 0 0 0 0.5px rgba(255,255,255,0.15); }
+html.pn-dark .ctxmenu .sub { background: rgba(40, 40, 44, 0.94); box-shadow: 0 12px 34px rgba(0,0,0,0.45), 0 0 0 0.5px rgba(255,255,255,0.15); }
 .ctxmenu i { width: 18px; font-style: normal; text-align: center; }
 .ctxmenu kbd { margin-left: auto; font: inherit; opacity: 0.55; }
 .ctxmenu hr { border: 0; height: 0.5px; background: rgba(0,0,0,0.15); margin: 4px 8px; }
@@ -408,6 +426,7 @@ html.desk.pn-dark .mmenu .drop a { color: var(--pn-text); }
 /* 设置里新增的部件：下拉框、提醒规则、分辨率切换确认；面板里的外接磁盘、温度分组 */
 .settings .sel { font: inherit; font-size: 12px; color: var(--pn-text); background: var(--pn-card); border: 1px solid var(--pn-stroke2); border-radius: 6px; padding: 3px 6px; }
 .settings .rule { display: flex; align-items: center; gap: 8px; padding: 6px 0 6px 42px; color: var(--pn-text2); }
+.settings .rule.off > :not(.tg) { opacity: 0.55; }
 .settings .rule b { color: var(--pn-text); font-weight: 600; }
 .settings .rule .del { margin-left: auto; border: 0; background: none; color: var(--pn-text3); cursor: pointer; font-size: 12px; }
 .settings .mode { cursor: pointer; }

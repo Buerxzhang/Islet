@@ -91,10 +91,13 @@ extension Metric {
         }
     }
 
-    /// 是否在菜单栏显示：每项的最后一个选项都是“隐藏”。
+    /// 是否在菜单栏显示：每项的最后一个选项都是“隐藏”；“系统指标”总开关关掉时全部不显示（各项自己的选择保留）。
     var isShown: Bool {
-        setting.selection != setting.choices.count - 1
+        Self.groupShown && setting.selection != setting.choices.count - 1
     }
+
+    static let groupKey = "showMetrics"
+    static var groupShown: Bool { UserDefaults.standard.object(forKey: groupKey) as? Bool ?? true }
 }
 
 /// 外观：跟随系统 / 浅色 / 深色。只作用于本程序的面板和窗口，不影响菜单栏图标。

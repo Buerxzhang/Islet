@@ -530,7 +530,6 @@ enum AppInfo {
     static let name = "islet"
     static let summary = "菜单栏里的灵动岛"
     static let author = "Buerxzhang"
-    static let authorURL = URL(string: "https://github.com/Buerxzhang")!
     static let homepage = URL(string: "https://github.com/Buerxzhang/islet")!
     /// 官网（GitHub Pages）：功能介绍和可交互的演示。
     static let website = URL(string: "https://buerxzhang.github.io/islet/")!

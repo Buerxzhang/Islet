@@ -54,7 +54,7 @@ func nativeSize(_ display: CGDirectDisplayID) -> (width: Int, height: Int)? {
     return pick.map { ($0.width, $0.height) }
 }
 
-/// HiDPI 档位：UI 放大 200%、160%、142.9%、133.3%、125%、114.3%、111.1%（相对原生）。
+/// HiDPI 档位：UI 放大 200%、160%、142.9%、133.3%（相对原生），绘制尺寸最多是屏幕的 1.5 倍。
 /// 尽量取与原生严格等比例的尺寸（宽高都是偶数），不会有黑边或变形；凑不出来时按宽度取最接近的偶数。
 func scaledSizes(native: (width: Int, height: Int)) -> [(width: Int, height: Int)] {
     func gcd(_ a: Int, _ b: Int) -> Int { b == 0 ? a : gcd(b, a % b) }
@@ -62,7 +62,8 @@ func scaledSizes(native: (width: Int, height: Int)) -> [(width: Int, height: Int
     let unitW = native.width / g, unitH = native.height / g
     let step = unitW % 2 == 0 && unitH % 2 == 0 ? 1 : 2   // 单位尺寸有奇数时，倍数取偶数，宽高才都是偶数
     var seen = Set<String>()
-    return [2.0, 1.6, 10.0 / 7.0, 4.0 / 3.0, 1.25, 8.0 / 7.0, 10.0 / 9.0].compactMap { factor in
+    // 不加 125%、114.3%、111.1%：绘制尺寸超过屏幕 1.5 倍，切过去显示器会黑屏重启，设置里也不列
+    let sizes: [(width: Int, height: Int)] = [2.0, 1.6, 10.0 / 7.0, 4.0 / 3.0].compactMap { factor in
         let target = Double(native.width) / factor
         let k = Int((target / Double(unitW * step)).rounded()) * step
         var width = unitW * k, height = unitH * k
@@ -74,6 +75,7 @@ func scaledSizes(native: (width: Int, height: Int)) -> [(width: Int, height: Int
         guard width * 2 <= 7680, height * 2 <= 4320, seen.insert("\(width)x\(height)").inserted else { return nil }
         return (width, height)
     }
+    return sizes.sorted { $0.width < $1.width }
 }
 
 /// 每个档位三条：2 倍渲染尺寸（带缩放标记）、2 倍渲染尺寸、逻辑尺寸。与常见的 HiDPI 覆盖配置写法一致。
@@ -166,12 +168,12 @@ case "install":
     guard let native = nativeSize(id) else { fail("读不到这块屏的原生分辨率") }
     // 系统已经给了实用的 HiDPI 档位（4K 屏等）：不重复添加。
     // 只算比原生一半更大的档位——2K、带鱼屏通常只有“原生的一半”这一档 HiDPI，东西大得没法用，仍然需要添加
+    // islet 自己以前写的配置直接换成新档位（这时系统里的 HiDPI 档位就是它带来的，不算）；别的工具写的不动
+    let replacing = FileManager.default.fileExists(atPath: path)
+    guard !replacing || isOwned(id) else { fail("这块屏已有其他工具写入的配置，没有改动") }
     let ratio = Double(native.width) / Double(native.height)
-    guard !allModes(id).contains(where: { $0.pixelWidth >= $0.width * 2 && $0.width > native.width / 2 + 8 && $0.width < native.width
+    guard replacing || !allModes(id).contains(where: { $0.pixelWidth >= $0.width * 2 && $0.width > native.width / 2 + 8 && $0.width < native.width
         && abs(Double($0.width) / Double($0.height) / ratio - 1) <= 0.01 }) else { fail("这块屏已有系统提供的 HiDPI 档位，不需要再添加") }
-    guard !FileManager.default.fileExists(atPath: path) else {
-        fail(isOwned(id) ? "已经添加过 HiDPI 档位" : "这块屏已有其他工具写入的配置，没有改动")
-    }
     let sizes = scaledSizes(native: native)
     guard !sizes.isEmpty else { fail("这块屏的分辨率不适合添加 HiDPI 档位") }
     let directory = FileManager.default.temporaryDirectory.appendingPathComponent("islet-display-\(UUID().uuidString)")
@@ -182,7 +184,7 @@ case "install":
         try overrideData(vendor: CGDisplayVendorNumber(id), product: CGDisplayModelNumber(id), sizes: sizes, marker: true).write(to: file)
         let target = quoted(path)
         let folder = quoted((path as NSString).deletingLastPathComponent)
-        runAsAdmin("/bin/mkdir -p \(folder) && test ! -e \(target) && /usr/bin/install -o root -g wheel -m 644 \(quoted(file.path)) \(target)")
+        runAsAdmin("/bin/mkdir -p \(folder) && test ! -L \(target) && \(replacing ? "/bin/rm -f \(target) && " : "")/usr/bin/install -o root -g wheel -m 644 \(quoted(file.path)) \(target)")
     } catch { fail("生成配置失败：\(error.localizedDescription)") }
     print("已添加 \(sizes.map { "\($0.width)×\($0.height)" }.joined(separator: "、"))")
 

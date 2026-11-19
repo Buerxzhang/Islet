@@ -321,13 +321,7 @@ final class SoundPanelModel: ObservableObject {
     @Published var allDevices: [BluetoothDevice] = []
     /// 面板里显示的设备：去掉在设置里取消勾选的。
     var devices: [BluetoothDevice] { allDevices.filter { !hiddenDevices.contains($0.id) } }
-    @Published var showBluetooth = UserDefaults.standard.object(forKey: "soundShowBluetooth") as? Bool ?? true
     @Published var hiddenDevices = Set(UserDefaults.standard.stringArray(forKey: "hiddenBluetoothDevices") ?? [])
-
-    func setShowBluetooth(_ on: Bool) {
-        showBluetooth = on
-        UserDefaults.standard.set(on, forKey: "soundShowBluetooth")
-    }
 
     func setHidden(_ hidden: Bool, device: String) {
         if hidden { hiddenDevices.insert(device) } else { hiddenDevices.remove(device) }
@@ -366,49 +360,7 @@ final class SoundPanelModel: ObservableObject {
     var onBluetoothSettings: () -> Void = {}
     var onSoundSettings: () -> Void = {}
     var onSettings: () -> Void = {}
-    var onHide: () -> Void = {}
     var onQuit: () -> Void = {}
-}
-
-/// 蓝牙：标题（含电源开关）+ 设备列表，点设备连接 / 断开。用在菜单栏的蓝牙面板里。
-struct BluetoothSection: View {
-    @ObservedObject var model: SoundPanelModel
-
-    var body: some View {
-        Themed { p in
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack {
-                        SectionHeader(title: "蓝牙")
-                        Toggle2(isOn: model.bluetoothOn, onChange: model.onBluetoothPower)
-                    }
-                    Card(padding: 6) {
-                        VStack(spacing: 2) {
-                            if !model.bluetoothOn {
-                                placeholder(p, "蓝牙已关闭")
-                            } else if !model.bluetoothLoaded {
-                                placeholder(p, "正在读取设备…")
-                            } else if model.devices.isEmpty {
-                                placeholder(p, "没有已配对的设备")
-                            } else {
-                                ForEach(model.devices) { device in
-                                    DeviceRow(model: model, key: "bt" + device.id, symbol: device.symbol, name: device.name, selected: device.connected,
-                                              trailing: model.confirming == device.id ? "再点一次断开" : device.battery,
-                                              warning: model.confirming == device.id, busy: model.busy.contains(device.id)) {
-                                        model.tap(device)
-                                    }
-                                    .help(device.connected ? "点击断开" : "点击连接")
-                                }
-                            }
-                        }
-                    }
-                }
-        }
-    }
-
-    private func placeholder(_ p: Palette, _ text: String) -> some View {
-        Text(text).font(Typo.caption).foregroundStyle(p.text3)
-            .frame(maxWidth: .infinity, alignment: .center).padding(.vertical, 12)
-    }
 }
 
 /// 菜单栏蓝牙面板：与其他指标面板同一套样式。上方是已连接设备（圆环电量，点了断开），下方是其他已配对设备（点了连接）。
@@ -427,12 +379,6 @@ struct BluetoothPanelView: View {
                     if !model.bluetoothOn {
                         Toggle2(isOn: false, onChange: model.onBluetoothPower)
                     }
-                    Button(action: model.onHide) {
-                        Image(systemName: "eye.slash").font(.system(size: 13)).foregroundStyle(p.text2)
-                            .frame(width: 24, height: 24).contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    .help("从岛上隐藏（可在设置里重新显示）")
                     Button(action: model.onSettings) {
                         Image(systemName: "gearshape").font(.system(size: 13)).foregroundStyle(p.text2)
                             .frame(width: 24, height: 24).contentShape(Rectangle())
@@ -594,11 +540,6 @@ struct SoundControls: View {
         if model.muted || model.volume == 0 { return "speaker.slash.fill" }
         return model.volume < 0.34 ? "speaker.wave.1.fill" : model.volume < 0.67 ? "speaker.wave.2.fill" : "speaker.wave.3.fill"
     }
-
-    private func placeholder(_ p: Palette, _ text: String) -> some View {
-        Text(text).font(Typo.caption).foregroundStyle(p.text3)
-            .frame(maxWidth: .infinity, alignment: .center).padding(.vertical, 12)
-    }
 }
 
 /// 设备行：圆形图标（选中 / 已连接时高亮）+ 名称 + 右侧数值。
@@ -670,7 +611,6 @@ final class SoundController: NSObject, NSPopoverDelegate {
     var onBluetoothImage: (NSImage?) -> Void = { _ in }
     /// 蓝牙面板打开 / 关闭（灵动岛据此点亮那一段）。
     var onBluetoothPanel: (Bool) -> Void = { _ in }
-    var isBluetoothPanelShown: Bool { bluetoothPopover.isShown }
 
     /// 启动菜单栏蓝牙：每 30 秒刷新一次；设备连接 / 断开时立即刷新。
     func startBluetoothItem() {
@@ -796,16 +736,6 @@ final class SoundController: NSObject, NSPopoverDelegate {
     private lazy var systemListener: AudioObjectPropertyListenerBlock = { [weak self] _, _ in self?.audioChanged() }
     private lazy var deviceListener: AudioObjectPropertyListenerBlock = { [weak self] _, _ in self?.volumeChanged() }
 
-    /// 启动时就监听音量和输出设备（灵动岛显示音量提示用）。
-    func startVolumeWatch() {
-        guard !listeningSystem else { return }
-        let system = AudioObjectID(kAudioObjectSystemObject)
-        AudioSystem.listen(system, kAudioHardwarePropertyDefaultOutputDevice, kAudioObjectPropertyScopeGlobal, systemListener)
-        AudioSystem.listen(system, kAudioHardwarePropertyDevices, kAudioObjectPropertyScopeGlobal, systemListener)
-        listeningSystem = true
-        audioChanged()
-    }
-
     func start() {
         panel.onBluetoothPower = { [weak self] in self?.setBluetoothPower($0) }
         panel.onHiddenChange = { [weak self] in self?.publishBluetoothImage() }
@@ -833,11 +763,6 @@ final class SoundController: NSObject, NSPopoverDelegate {
         panel.onSettings = { [weak self] in
             self?.bluetoothPopover.performClose(nil)
             self?.openSettings()
-        }
-        panel.onHide = { [weak self] in
-            self?.bluetoothPopover.performClose(nil)
-            UserDefaults.standard.set(false, forKey: "bluetoothItem")
-            self?.startBluetoothItem()
         }
         panel.onQuit = { NSApp.terminate(nil) }
     }
@@ -875,10 +800,7 @@ final class SoundController: NSObject, NSPopoverDelegate {
             let old = panel.outputs[index]
             panel.outputs[index] = AudioOutput(id: old.id, name: old.name, transport: old.transport, volume: volume)
         }
-        onVolumeChange(volume, muted)
     }
-    /// 音量变化（灵动岛显示音量条用）。
-    var onVolumeChange: (Float?, Bool) -> Void = { _, _ in }
 
     // MARK: 蓝牙
 
@@ -917,15 +839,6 @@ final class SoundController: NSObject, NSPopoverDelegate {
     }
 
     // MARK: 面板
-
-    /// 滚轮调音量：delta 为 0~1 的变化量。
-    func nudgeVolume(_ delta: Float) {
-        let id = AudioSystem.defaultOutput
-        guard let current = AudioSystem.volume(of: id) else { return }
-        let base = AudioSystem.isMuted(id) ? 0 : current
-        AudioSystem.setVolume(min(max(base + delta, 0), 1), of: id)
-        volumeChanged()
-    }
 
     /// 设置窗口读取设备列表用。
     func loadDevices() { refreshBluetooth() }

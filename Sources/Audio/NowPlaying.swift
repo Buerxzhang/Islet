@@ -1,7 +1,7 @@
 import AppKit
 import Combine
 
-/// 正在播放的信息（来自 NowPlaying/adapter.m，由系统 perl 托管的读取组件推送）。
+/// 正在播放的信息（来自 Helpers/NowPlayingAdapter.m，由系统 perl 托管的读取组件推送）。
 struct NowPlayingInfo {
     var title = ""
     var artist = ""

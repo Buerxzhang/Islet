@@ -14,7 +14,6 @@ final class SpectrumPanelModel: ObservableObject {
 
     var onCommand: (NowPlayingMonitor.Command) -> Void = { _ in }
     var onLook: (SpectrumLook) -> Void = { _ in }
-    var onHide: () -> Void = {}
     var onPrivacy: () -> Void = {}
     var onSettings: () -> Void = {}
     var onQuit: () -> Void = {}
@@ -33,12 +32,6 @@ struct SpectrumPanelView: View {
                         .foregroundStyle(p.accentFill).frame(width: 20)
                     Text(model.source == nil ? "音乐频谱" : "频谱").font(Typo.title).foregroundStyle(p.text)
                     Spacer()
-                    Button(action: model.onHide) {
-                        Image(systemName: "eye.slash").font(.system(size: 13)).foregroundStyle(p.text2)
-                            .frame(width: 24, height: 24).contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    .help("从岛上隐藏（可在设置里重新显示）")
                     Button(action: model.onSettings) {
                         Image(systemName: "gearshape").font(.system(size: 13)).foregroundStyle(p.text2)
                             .frame(width: 24, height: 24).contentShape(Rectangle())
@@ -59,14 +52,14 @@ struct SpectrumPanelView: View {
                             HStack {
                                 Text("需要“系统录音”权限").font(Typo.body).foregroundStyle(p.text)
                                 Spacer()
-                                PlainButton(title: "打开权限设置…", action: model.onPrivacy)
+                                PlainButton(title: "打开权限设置", action: model.onPrivacy)
                             }
                         }
                     }
                 }
 
                 HStack(spacing: 14) {
-                    LinkButton(title: "样式设置…", muted: true, action: model.onSettings)
+                    LinkButton(title: "样式设置", muted: true, action: model.onSettings)
                     Spacer()
                     LinkButton(title: "退出", muted: true, action: model.onQuit)
                 }
@@ -335,178 +328,3 @@ struct SpectrumLookEditor: View {
         }
     }
 }
-
-/// 设置窗口顶部的菜单栏实时预览：深色菜单栏 + 当前样式的频谱（演示电平，有正在播放的封面就用它）。
-struct MenuBarPreview: NSViewRepresentable {
-    let look: SpectrumLook
-    var merged = false
-
-    final class Host: NSView {
-        let bars = SpectrumBarsView(frame: NSRect(x: 0, y: 0, width: 200, height: 24))
-        /// 合成一个岛时：指标胶囊，频谱嵌在它左侧。
-        private var island: MetricsIslandView?
-        private let container: NSView = {
-            let view = NSView()
-            view.wantsLayer = true
-            return view
-        }()
-        private var timer: Timer?
-        private var phase: Double = 0
-        /// 岛的当前宽度（未合成时为 0）。
-        var islandWidth: CGFloat { island?.frame.width ?? 0 }
-
-        override init(frame: NSRect) {
-            super.init(frame: frame)
-            appearance = NSAppearance(named: .darkAqua)
-            addSubview(container)
-            addSubview(bars)
-            // 示例数据：演示封面和播放器图标
-            bars.artwork = Self.demoArtwork
-            bars.tint = NowPlayingMonitor.dominantColor(of: Self.demoArtwork)
-            bars.appIcon = SpectrumController.appIcon(bundle: "com.apple.Music")
-            bars.iconTint = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.apple.Music")
-                .map { NSWorkspace.shared.icon(forFile: $0.path) }.flatMap(NowPlayingMonitor.dominantColor(of:))
-            bars.hasMedia = true
-            bars.playing = true
-            timer = Timer.scheduledTimer(withTimeInterval: 1.0 / 30, repeats: true) { [weak self] _ in self?.tick() }
-        }
-
-        required init?(coder: NSCoder) { nil }
-
-        deinit { timer?.invalidate() }
-
-        override func viewDidMoveToWindow() {
-            super.viewDidMoveToWindow()
-            if window == nil { timer?.invalidate() }
-        }
-
-        override func layout() {
-            super.layout()
-            if let island {
-                // 音乐关闭时不显示音乐部分；岛整体居中
-                island.audio = SpectrumController.isEnabled ? (bars, bars.preferredWidth) : nil
-                island.backdrop = bars.look.backdropColors(tint: SpectrumController.isEnabled ? bars.tint : nil)
-                // 岛按实际大小居中显示
-                container.frame = bounds
-                // 先定高度再取宽度：两端圆形的留白按高度计算，高度为 0 时宽度会少算
-                if island.frame.height != 24 { island.frame.size.height = 24 }
-                let width = island.preferredWidth
-                island.frame = NSRect(x: ((bounds.width - width) / 2).rounded(), y: ((bounds.height - 24) / 2).rounded(), width: width, height: 24)
-                island.layout()
-                fitWindowToIsland(capsuleWidth: width - 6)
-            } else {
-                let width = bars.preferredWidth
-                bars.frame = NSRect(x: bounds.width - width - 14, y: (bounds.height - 24) / 2, width: width, height: 24)
-            }
-            bars.refresh()
-        }
-
-        /// 设置窗口跟着岛定宽：窗口宽度直接由岛宽算出来（见 MenuBarPreview.windowWidth），不看预览区当前多宽——
-        /// 预览区宽度会随滚动条出现 / 消失、布局先后而变，跟着它调会来回闪。
-        private var pendingWidth: CGFloat?
-
-        private func fitWindowToIsland(capsuleWidth: CGFloat) {
-            // 用户按着鼠标（拖窗口、拉边框）时不改，免得和拖动打架；松手后下一次布局（最多 0.5 秒）再对齐
-            guard let window, window.styleMask.contains(.resizable), !window.inLiveResize,
-                  NSEvent.pressedMouseButtons == 0 else { return }
-            let width = MenuBarPreview.windowWidth(capsule: capsuleWidth)
-            guard abs(window.frame.width - width) >= 1 else { pendingWidth = nil; return }
-            // 刚打开时会连着布局好几次：只排一次调整，执行时用最新算出的宽度，不会按旧值来回改
-            let scheduled = pendingWidth != nil
-            pendingWidth = width
-            guard !scheduled else { return }
-            DispatchQueue.main.async { [weak self] in
-                guard let self, let width = self.pendingWidth else { return }
-                self.pendingWidth = nil
-                guard abs(window.frame.width - width) >= 1 else { return }
-                var frame = window.frame
-                frame.size.width = width
-                window.minSize = NSSize(width: min(width, 640), height: window.minSize.height)
-                window.setFrame(frame, display: true)
-            }
-        }
-
-        func apply(_ look: SpectrumLook, merged: Bool) {
-            bars.look = look
-            if merged, island == nil {
-                let view = MetricsIslandView(frame: .zero)
-                syncIsland(view)
-                bars.removeFromSuperview()
-                bars.embedded = true
-                container.addSubview(view)
-                island = view
-            } else if !merged, let island {
-                island.audio = nil
-                island.removeFromSuperview()
-                self.island = nil
-                bars.embedded = false
-                addSubview(bars)
-            }
-            needsLayout = true
-        }
-
-
-
-        private var tickCount = 0
-
-        /// 按当前设置用示例数据画：开了哪些指标、网速方式、蓝牙、音乐，和菜单栏上的岛一致。
-        private func syncIsland(_ view: MetricsIslandView) {
-            view.segments = MetricsIslandView.previewSegments()
-            view.slots = IslandOrder.items.compactMap { id -> MetricsIslandView.Slot? in
-                switch id {
-                case "music": return .audio
-                case "bluetooth": return .trailing
-                default: return Metric.allCases.first { "\($0)" == id }.map { .metric($0) }
-                }
-            }
-            // 示例：键盘、鼠标、耳机、手柄、其他设备，电量高低各不同（绿 / 橙 / 红 / 读不到）
-            view.trailing = SoundController.showsBluetoothItem
-                ? StatusIcons.bluetooth([(symbol: "keyboard", battery: 82), (symbol: "computermouse", battery: 15),
-                                         (symbol: "headphones", battery: 38), (symbol: "gamecontroller", battery: 66),
-                                         (symbol: "dot.radiowaves.left.and.right", battery: nil)]) : nil
-            needsLayout = true
-        }
-
-        private func tick() {
-            tickCount += 1
-            if tickCount % 15 == 0, let island { syncIsland(island) }   // 设置改了很快反映到预览
-            phase += 0.12
-            let levels = (0..<SpectrumAnalyzer.bandCount).map { i -> Float in
-                let x = Double(i)
-                let base = 0.75 * exp(-pow(x - 6, 2) / 28) + 0.2
-                let wobble = 0.18 * sin(phase * 1.7 + x * 0.9) + 0.12 * sin(phase * 3.1 + x * 0.37)
-                return Float(min(max(base + wobble, 0.05), 1))
-            }
-            bars.update(levels, audible: true)
-        }
-
-        private static let demoArtwork = NSImage(size: NSSize(width: 64, height: 64), flipped: false) { rect in
-            NSGradient(starting: NSColor(srgbRed: 1, green: 0.45, blue: 0.35, alpha: 1),
-                       ending: NSColor(srgbRed: 0.6, green: 0.2, blue: 0.65, alpha: 1))!.draw(in: rect, angle: -45)
-            return true
-        }
-    }
-
-    /// 设置窗口的宽度：侧栏 190 + 分隔线 1 + 内容左右边距 22×2 + 岛宽（至少 480，岛很短时设置行不会挤）。
-    /// 设置页不显示滚动条，所以不用给它留宽度。岛和下面的卡片因此一样宽。
-    static func windowWidth(capsule: CGFloat) -> CGFloat {
-        ceil(190 + 1 + 22 * 2 + max(capsule.rounded(.up), 480))
-    }
-
-    /// 按当前设置算出的设置窗口宽度（打开窗口时用，和打开后的调整同一个算法，不会跳）。
-    static func windowWidth() -> CGFloat {
-        let host = Host(frame: NSRect(x: 0, y: 0, width: 1200, height: 46))
-        host.apply(SpectrumLook.current, merged: true)
-        host.layout()
-        return windowWidth(capsule: host.islandWidth - 6)
-    }
-
-    func makeNSView(context: Context) -> Host {
-        let host = Host(frame: NSRect(x: 0, y: 0, width: 400, height: 46))
-        host.apply(look, merged: merged)
-        return host
-    }
-
-    func updateNSView(_ host: Host, context: Context) { host.apply(look, merged: merged) }
-}
-

@@ -91,6 +91,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
 
     private static let floatingKey = "floatingIsland"
     static var floatsIsland: Bool { UserDefaults.standard.bool(forKey: floatingKey) }
+
+    /// 菜单栏所在的屏有没有刘海。
+    static var menuBarHasNotch: Bool { (NSScreen.screens.first?.safeAreaInsets.top ?? 0) > 0 }
+
+    /// 新装时的默认值（只在用户没选过时定一次）：
+    /// - 悬浮：刘海屏右侧的菜单栏图标常被藏到刘海后面，默认悬浮；其他屏默认放在菜单栏。
+    /// - 分体胶囊：默认分体（音乐、系统指标、蓝牙电量各成一个小胶囊）。
+    /// 已经用过 islet 的（有菜单栏项的位置记录）保持原来的样子：放在菜单栏、合体。
+    static func setDefaultFloating() {
+        let defaults = UserDefaults.standard
+        let usedBefore = defaults.dictionaryRepresentation().keys.contains { $0.hasPrefix("NSStatusItem") }
+        if defaults.object(forKey: floatingKey) == nil { defaults.set(!usedBefore && menuBarHasNotch, forKey: floatingKey) }
+        if defaults.object(forKey: MetricsIslandView.splitKey) == nil { defaults.set(!usedBefore, forKey: MetricsIslandView.splitKey) }
+    }
     private static let fullScreenFloatingKey = "fullScreenFloatingIsland"
     static var fullScreenFloatingIsland: Bool { UserDefaults.standard.bool(forKey: fullScreenFloatingKey) }
     private static var floatingWindowLevel: NSWindow.Level {
@@ -178,8 +192,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
                 islandView.frame = button.bounds
                 button.addSubview(islandView)
             }
-            if item.isVisible != (width > 0) { item.isVisible = width > 0 }
+            // 先改宽度再显示：隐藏时留着的是旧宽度，反过来会先闪一帧旧宽度
             if !islandAnimating, width > 0, item.length != width { item.length = width }
+            if item.isVisible != (width > 0) { item.isVisible = width > 0 }
             return
         }
 
@@ -191,7 +206,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             panel.hidesOnDeactivate = false
             panel.isOpaque = false
             panel.backgroundColor = .clear
-            panel.title = "islet 全局悬浮"
+            panel.title = "islet 悬浮显示"
             let anchor = FloatingIslandButton(frame: .zero)
             anchor.title = ""
             anchor.isBordered = false
@@ -240,9 +255,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private var leftmostWork: DispatchWorkItem?
 
     /// 新建的菜单栏项总是出现在最左：把我们的项换新名字重建一次，就回到最左。
-    /// （系统不提供其他程序菜单栏图标的位置，无法判断是否被挤到右边，所以在有程序启动后统一重建一次。）
+    /// 有辅助功能权限时先读各程序图标的位置，已在最左就不动；没有权限时在有程序启动后统一重建一次。
     func moveToLeftmost() {
         guard Self.keepsLeftmost, !Self.floatsIsland, renderRequest == nil, !sleeping else { return }
+        // 换位动画还没做完：等它做完再看（否则透明度从头来、闪一下）
+        if islandAnimating { scheduleLeftmost(after: 1); return }
+        if islandIsLeftmost() == true { return }
         if popover.isShown || SpectrumController.shared.visualizer.isOpen { scheduleLeftmost(after: 5); return }
         SpectrumController.shared.closePanel()
         StatusItemNames.renew()
@@ -263,7 +281,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         }
         islandAnimating = true
         let width = old.length
-        animate(old, from: width, to: 0, alpha: (1, 0), duration: 0.22, curve: { $0 * $0 }) { [weak self] in
+        animate(old, from: width, to: { 0 }, alpha: (1, 0), duration: 0.22, curve: { $0 * $0 }) { [weak self] in
             guard let self else { return }
             NSStatusBar.system.removeStatusItem(old)
             self.islandItem = nil
@@ -271,14 +289,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             item.length = 0
             self.islandView.alphaValue = 0
             self.updateIsland()                   // 只更新内容，不改宽度
-            let target = self.islandView.preferredWidth
-            item.isVisible = target > 0
+            item.isVisible = self.islandView.preferredWidth > 0
             // 回弹缓动：略微超出再回到目标宽度
             let back: (Double) -> Double = { t in
                 let c = 1.4, u = t - 1
                 return 1 + (c + 1) * u * u * u + c * u * u
             }
-            self.animate(item, from: 0, to: target, alpha: (0, 1), duration: 0.42, curve: back) {
+            // 目标宽度逐帧取：展开途中音乐展开 / 收起、数值变宽，结尾不跳
+            self.animate(item, from: 0, to: { [weak self] in self?.islandView.preferredWidth ?? 0 }, alpha: (0, 1),
+                         duration: 0.42, curve: back) {
                 self.islandAnimating = false
                 self.updateIsland()
             }
@@ -286,14 +305,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     }
 
     /// 逐帧改菜单栏项宽度和内容透明度（菜单栏项没有系统动画，只能一帧帧设置）。
-    private func animate(_ item: NSStatusItem, from: CGFloat, to: CGFloat, alpha: (CGFloat, CGFloat)?, duration: Double,
+    private func animate(_ item: NSStatusItem, from: CGFloat, to target: @escaping () -> CGFloat, alpha: (CGFloat, CGFloat)?, duration: Double,
                          curve: @escaping (Double) -> Double, completion: @escaping () -> Void) {
         islandAnimation?.invalidate()
         let start = Date()
         let timer = Timer(timeInterval: 1.0 / 60, repeats: true) { [weak self] timer in
             guard let self else { timer.invalidate(); return }
             let t = min(Date().timeIntervalSince(start) / duration, 1)
-            let e = curve(t)
+            let e = curve(t), to = target()
             item.length = max(0, (from + (to - from) * CGFloat(e)).rounded())
             if let alpha { self.islandView.alphaValue = alpha.0 + (alpha.1 - alpha.0) * CGFloat(min(max(t * 1.2, 0), 1)) }
             self.islandView.needsLayout = true
@@ -309,6 +328,36 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         islandAnimation = timer
     }
 
+    /// 有辅助功能权限时，读其他程序菜单栏图标的位置，判断灵动岛是否已在最左；无权限返回 nil（只能盲目重建）。
+    private func islandIsLeftmost() -> Bool? {
+        guard AXIsProcessTrusted(), let frame = islandItem?.button?.window?.frame,
+              let primary = NSScreen.screens.first else { return nil }
+        // 自己的位置直接取窗口位置（换成辅助功能用的左上角原点坐标），不用辅助功能接口查自己
+        let mine = CGPoint(x: frame.minX, y: primary.frame.maxY - frame.maxY)
+        func extras(_ pid: pid_t) -> [CGPoint] {
+            let app = AXUIElementCreateApplication(pid)
+            AXUIElementSetMessagingTimeout(app, 0.1)   // 卡住的程序不拖累我们
+            var bar: CFTypeRef?, kids: CFTypeRef?
+            guard AXUIElementCopyAttributeValue(app, "AXExtrasMenuBar" as CFString, &bar) == .success, let bar,
+                  CFGetTypeID(bar) == AXUIElementGetTypeID(),
+                  AXUIElementCopyAttributeValue(bar as! AXUIElement, kAXChildrenAttribute as CFString, &kids) == .success
+            else { return [] }
+            return ((kids as? [AXUIElement]) ?? []).compactMap { el in
+                var value: CFTypeRef?, point = CGPoint.zero
+                guard AXUIElementCopyAttributeValue(el, kAXPositionAttribute as CFString, &value) == .success, let value,
+                      CFGetTypeID(value) == AXValueGetTypeID(), AXValueGetValue(value as! AXValue, .cgPoint, &point) else { return nil }
+                return point
+            }
+        }
+        let me = getpid()
+        // 纯后台进程没有菜单栏图标，不问
+        for app in NSWorkspace.shared.runningApplications where app.processIdentifier != me && app.activationPolicy != .prohibited {
+            // 同一条菜单栏（y 相近）上有别人的图标在左边
+            if extras(app.processIdentifier).contains(where: { abs($0.y - mine.y) < 20 && $0.x < mine.x - 1 }) { return false }
+        }
+        return true
+    }
+
     /// 合并短时间内的多次触发（同时启动好几个程序时只重建一次）。
     private func scheduleLeftmost(after delay: TimeInterval) {
         leftmostWork?.cancel()
@@ -322,6 +371,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
         guard app?.activationPolicy != .prohibited else { return }
         scheduleLeftmost(after: 3)
+        // 不少程序启动后过好几秒才放出图标；能读位置时再补查两次（已在最左就什么都不做）
+        guard AXIsProcessTrusted() else { return }
+        for delay in [10.0, 30.0] {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in self?.moveToLeftmost() }
+        }
     }
     private var iconImages: [Metric: NSImage] = [:]
     private var accessibilityValues: [Metric: String] = [:]   // 读屏：每个指标的当前值
@@ -401,6 +455,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             runRender(request)
             return
         }
+        Self.setDefaultFloating()
         _ = island
         applyItemVisibility()
         SpectrumController.shared.openSettings = { [weak self] in self?.openSettings(page: .menuBar, expand: "music") }
@@ -455,6 +510,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
                   point.y >= screen.frame.maxY - NSStatusBar.system.thickness - 6 else { return }
             self?.scheduleLeftmost(after: 0.4)
         }
+        DisplayManager.shared.startRestoring()
         NotificationCenter.default.addObserver(self, selector: #selector(floatingScreenChanged),
                                                name: NSApplication.didChangeScreenParametersNotification, object: nil)
         workspace.addObserver(self, selector: #selector(didWake), name: NSWorkspace.didWakeNotification, object: nil)
@@ -486,6 +542,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             return (metric, image)
         }
         view.trailing = bluetoothImage
+        view.split = MetricsIslandView.splits
         view.slots = IslandOrder.items.compactMap { id -> MetricsIslandView.Slot? in
             switch id {
             case "music": return .audio
@@ -503,11 +560,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             if islandRevealTarget != shown {
                 let first = islandRevealTarget == nil
                 islandRevealTarget = shown
-                view.setRevealed(shown, animated: !first && island.item.isVisible)
+                // 不看菜单栏项 / 悬浮窗当前是否可见：只剩音乐时收起后胶囊整个隐藏，再播放时要从无到有展开
+                view.setRevealed(shown, animated: !first && !sleeping)
             }
         } else {
-            view.audio = nil
-            islandRevealTarget = nil
+            // 关掉音乐模块：先收起再拿掉；之后再打开要从无到有展开（不当成启动时的第一次）
+            view.removeAudio(animated: !sleeping)
+            if islandRevealTarget != nil { islandRevealTarget = false }
         }
         // 读屏：按显示顺序读出各指标，如“CPU 使用率 18%，GPU 使用率 32%…”
         let summary = MetricOrder.current.filter(\.isShown).compactMap { metric in
@@ -521,7 +580,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     @objc private func islandClicked(_ sender: NSView) {
         if let event = NSApp.currentEvent, event.type == .rightMouseUp || event.modifierFlags.contains(.control) {
             popover.performClose(nil)
-            showIslandMenu(from: sender)
+            showIslandMenu(from: sender, item: islandItemID(at: sender))
             return
         }
         guard let window = sender.window else { return }
@@ -662,9 +721,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         let view: AnyView
         switch request.target {
         case "settings":
+            setupFanEditors()
             updateControlTemperatures()
             if let page = SettingsPage.allCases.first(where: { CommandLine.arguments.contains($0.rawValue) }) { settingsModel.page = page }
             if CommandLine.arguments.contains("open") { settingsModel.expanded = ["cpu", "temperature", "fan"] }
+            if CommandLine.arguments.contains("fanedit") { settingsModel.expanded = ["fan", "fanCurve", "fanRules"]; settingsModel.scrollTarget = "fan" }
             if CommandLine.arguments.contains("donate") { settingsModel.showDonate = true }
             SoundController.fillDemo(SoundController.shared.panel)
             view = AnyView(SettingsView(model: settingsModel, flat: true).frame(width: 680, height: 560))
@@ -769,11 +830,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             let id = "\(self.panel.metric)"
             self.openSettings(page: .menuBar, expand: [Metric.network, .fan, .fps].contains(self.panel.metric) ? id : nil)
         }
-        panel.onHide = { [weak self] in
-            guard let self else { return }
-            self.popover.performClose(nil)
-            self.settingsModel.setVisible("\(self.panel.metric)", false)
-        }
         panel.onQuit = { NSApp.terminate(nil) }
         panel.onDiagnostics = { [weak self] in
             Diagnostics.copyReport()
@@ -784,8 +840,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         panel.onFixedCommit = { [weak self] rpm in
             FanHelperClient.shared.update({ $0.fixedRPM = rpm }) { error in self?.panel.strategyError = error }
         }
-        panel.onOpenCurve = { [weak self] in self?.openCurveEditor() }
-        panel.onOpenRules = { [weak self] in self?.openRules() }
+        panel.onSelectPreset = { [weak self] preset in self?.curveModel?.apply(preset) }
         panel.onQuitApp = { [weak self] row in self?.quitApp(row) }
         panel.onForceQuit = { [weak self] row in self?.forceQuitApp(row) }
         panel.onEject = { [weak self] volume in
@@ -885,6 +940,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             self?.settingsModel.refresh()
         }
         settingsModel.onUninstallFan = { [weak self] in self?.uninstallFanHelper() }
+        setupFanEditors()
         settingsModel.onCopyDiagnostics = { [weak self] in
             Diagnostics.copyReport()
             self?.settingsModel.diagnosticsNote = "已复制"
@@ -892,26 +948,79 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         }
     }
 
-    /// 右键菜单（系统原生菜单：点任意位置都会关闭，带快捷键提示）：设置、全局悬浮、平滑滚动、关于、退出。
-    private func islandMenu() -> NSMenu {
+    /// 右键菜单（系统原生菜单：点任意位置都会关闭，带快捷键提示）。
+    /// item：右键点到的那一段（"music"、"bluetooth" 或指标 id），菜单顶部多出隐藏它的选项；
+    /// “显示内容”子菜单逐项勾选显示 / 隐藏。
+    private func islandMenu(item: String?) -> NSMenu {
         let menu = NSMenu()
         let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? ""
         let title = NSMenuItem(title: "islet \(version)", action: nil, keyEquivalent: "")
         title.isEnabled = false
         menu.addItem(title)
         menu.addItem(.separator())
-        let settings = NSMenuItem(title: "设置…", action: #selector(menuOpenSettings), keyEquivalent: ",")
-        settings.target = self
-        menu.addItem(settings)
-        let floating = NSMenuItem(title: "全局悬浮", action: #selector(menuToggleFloating), keyEquivalent: "")
+        // 岛上实际显示的项（指标整组关掉时，单项开关不算数）
+        let shown = settingsModel.islandOrder.filter(isShownOnIsland)
+        // 只有系统指标一直有内容：音乐没在播放、蓝牙没连设备时都不显示。
+        // 隐藏后至少留一个指标，否则胶囊可能整个消失、连右键都点不到（想只留音乐 / 蓝牙，到设置里关）
+        let shownMetrics = shown.filter { !Self.isModule($0) }
+        func canHide(_ id: String) -> Bool {
+            guard shown.contains(id) || id == Self.metricsModule else { return true }
+            if id == Self.metricsModule { return false }
+            return Self.isModule(id) ? !shownMetrics.isEmpty : shownMetrics.count > 1
+        }
+        if let item, shown.contains(item) {
+            // 中文和英文之间留空格，中文之间不留：隐藏 CPU 指标、隐藏风扇指标
+            let name = islandItemName(item)
+            let spaced = name.first?.isASCII == true ? " \(name) " : name
+            let hide = NSMenuItem(title: Self.isModule(item) ? "隐藏\(name)模块" : "隐藏\(spaced)指标",
+                                  action: canHide(item) ? #selector(menuToggleItem(_:)) : nil, keyEquivalent: "")
+            hide.target = self
+            hide.representedObject = item
+            menu.addItem(hide)
+        }
+        // 显示内容：上段是模块（分体时各成一个小胶囊），下段是“系统指标”模块里的各项指标
+        let showItem = NSMenuItem(title: "显示内容", action: nil, keyEquivalent: "")
+        let showMenu = NSMenu()
+        func entry(_ id: String, _ on: Bool, enabled: Bool) {
+            let item = NSMenuItem(title: islandItemName(id), action: enabled ? #selector(menuToggleItem(_:)) : nil, keyEquivalent: "")
+            item.target = self
+            item.representedObject = id
+            item.state = on ? .on : .off
+            showMenu.addItem(item)
+        }
+        showMenu.addItem(.sectionHeader(title: "模块"))
+        for id in ["music", Self.metricsModule, "bluetooth"] {
+            let on = id == Self.metricsModule ? Metric.groupShown : shown.contains(id)
+            entry(id, on, enabled: !on || canHide(id))
+        }
+        showMenu.addItem(.separator())
+        showMenu.addItem(.sectionHeader(title: "系统指标里的指标"))
+        // 整组关掉时，各项指标保留自己的勾，但变灰
+        for id in settingsModel.islandOrder where !Self.isModule(id) {
+            let on = settingsModel.isVisible(id)
+            entry(id, on, enabled: Metric.groupShown && (!on || canHide(id)))
+        }
+        showItem.submenu = showMenu
+        menu.addItem(showItem)
+        let split = NSMenuItem(title: "分体胶囊", action: #selector(menuToggleSplit), keyEquivalent: "")
+        split.target = self
+        split.state = MetricsIslandView.splits ? .on : .off
+        menu.addItem(split)
+        // 写成要切换到的那种显示方式，不用勾选：悬浮时给“在菜单栏显示”，在菜单栏时给“悬浮显示”
+        let floating = NSMenuItem(title: Self.floatsIsland ? "在菜单栏显示" : "悬浮显示", action: #selector(menuToggleFloating), keyEquivalent: "")
         floating.target = self
-        floating.state = Self.floatsIsland ? .on : .off
         menu.addItem(floating)
+        // 扩展功能
+        menu.addItem(.separator())
         let smooth = NSMenuItem(title: "平滑滚动", action: #selector(menuToggleSmoothScroll), keyEquivalent: "")
         smooth.target = self
         smooth.state = SmoothScrollController.shared.enabled ? .on : .off
         menu.addItem(smooth)
+        // 应用本身：设置、关于（打开窗口的项带“…”）
         menu.addItem(.separator())
+        let settings = NSMenuItem(title: "设置…", action: #selector(menuOpenSettings), keyEquivalent: ",")
+        settings.target = self
+        menu.addItem(settings)
         let about = NSMenuItem(title: "关于 islet", action: #selector(menuOpenAbout), keyEquivalent: "")
         about.target = self
         menu.addItem(about)
@@ -924,13 +1033,67 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         SmoothScrollController.shared.setEnabled(!SmoothScrollController.shared.enabled)
     }
 
-    private func showIslandMenu(from anchor: NSView) {
+    /// 鼠标当前在岛上哪一段。
+    private func islandItemID(at sender: NSView) -> String? {
+        guard let window = sender.window else { return nil }
+        let view = island.view
+        let point = view.convert(window.mouseLocationOutsideOfEventStream, from: nil)
+        if let rect = view.trailingFrame, rect.contains(point) { return "bluetooth" }
+        if let rect = view.audioRect, rect.contains(point) { return "music" }
+        return view.metric(at: point).map { "\($0)" }
+    }
+
+    /// “系统指标”模块本身（整组开关）在菜单里的 id。
+    private static let metricsModule = "metrics"
+    /// 模块：音乐、系统指标、蓝牙电量；其余 id 都是系统指标里的单项指标。
+    private static func isModule(_ id: String) -> Bool { ["music", metricsModule, "bluetooth"].contains(id) }
+
+    private func isShownOnIsland(_ id: String) -> Bool {
+        settingsModel.isVisible(id) && (Self.isModule(id) || Metric.groupShown)
+    }
+
+    private func islandItemName(_ id: String) -> String {
+        switch id {
+        case "music": return "音乐"
+        case "bluetooth": return "蓝牙电量"
+        case Self.metricsModule: return "系统指标"
+        default: return SettingsModel.metricSetting(id)?.title ?? id
+        }
+    }
+
+    @objc private func menuToggleItem(_ sender: NSMenuItem) {
+        guard let id = sender.representedObject as? String else { return }
+        if id == Self.metricsModule {
+            settingsModel.setMetricsShown(!Metric.groupShown)
+        } else {
+            let on = !settingsModel.isVisible(id)
+            // 隐藏的项在顺序里排在最后（蓝牙后面）；重新显示指标时按默认顺序插回去：
+            // 放在默认顺序里排在它后面、且正在显示的第一个指标前面；没有就接在最后一个显示中的指标后面。
+            // 否则分体时它会跑到蓝牙右边，自成一个胶囊
+            if on, !Self.isModule(id) {
+                var order = settingsModel.islandOrder.filter { $0 != id }
+                let rank = { (x: String) in MetricOrder.standard.firstIndex { "\($0)" == x } ?? .max }
+                let index = order.firstIndex { !Self.isModule($0) && isShownOnIsland($0) && rank($0) > rank(id) }
+                    ?? order.lastIndex { !Self.isModule($0) && isShownOnIsland($0) }.map { $0 + 1 }
+                    ?? order.firstIndex(of: "bluetooth") ?? order.count
+                order.insert(id, at: index)
+                IslandOrder.save(order)
+                settingsModel.islandOrder = IslandOrder.items
+            }
+            settingsModel.setVisible(id, on)
+            settingsModel.onMetricOrder()
+        }
+    }
+    @objc private func menuToggleSplit() { settingsModel.setSplit(!MetricsIslandView.splits) }
+
+    private func showIslandMenu(from anchor: NSView, item: String? = nil) {
         SoundController.shared.closeBluetoothPanel()
         SpectrumController.shared.closePanel()
-        // 菜单栏里：从按钮下沿弹出；悬浮时：在鼠标位置弹出
+        // 菜单栏里：从按钮下沿、鼠标所在的横向位置弹出；悬浮时：在鼠标位置弹出
         let mouse = anchor.convert(anchor.window?.mouseLocationOutsideOfEventStream ?? .zero, from: nil)
-        let point = Self.floatsIsland && anchor.bounds.contains(mouse) ? mouse : NSPoint(x: 0, y: anchor.bounds.height + 5)
-        islandMenu().popUp(positioning: nil, at: point, in: anchor)
+        let inside = anchor.bounds.contains(mouse)
+        let point = Self.floatsIsland && inside ? mouse : NSPoint(x: inside ? mouse.x : 0, y: anchor.bounds.height + 5)
+        islandMenu(item: item).popUp(positioning: nil, at: point, in: anchor)
     }
 
     @objc private func menuOpenSettings() { openSettings() }
@@ -950,10 +1113,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         }
         popover.performClose(nil)
         updateControlTemperatures()
-        // 宽度跟着预览里岛的宽度走，岛和下面的卡片一样宽（算法见 MenuBarPreview.windowWidth）
-        let width = MenuBarPreview.windowWidth()
         // 关闭设置时收起展开的项，下次打开是干净的列表
-        windows.show("settings", title: "islet 设置", size: NSSize(width: width, height: 620), resizable: true,
+        windows.show("settings", title: "islet 设置", size: NSSize(width: 720, height: 620), resizable: true,
                      onClose: { [weak self] in
                         self?.settingsModel.expanded = []
                         DisplayManager.shared.collapseAll()
@@ -962,26 +1123,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         }
     }
 
-    private func openCurveEditor() {
-        guard let fan = Fan.readAll().first else { return }
-        popover.performClose(nil)
-        let model = curveModel ?? CurveEditorModel(minimum: fan.minimum, maximum: fan.maximum)
-        model.points = FanHelperClient.shared.config.curve
-        model.onActivate = { [weak self] in self?.selectStrategy(.curve) }
-        curveModel = model
-        updateControlTemperatures()
-        windows.show("curve", title: "温度曲线", size: NSSize(width: 640, height: 560)) {
-            CurveEditorView(model: model)
+    /// 设置 → 风扇里内嵌的曲线编辑器和规则列表。
+    private func setupFanEditors() {
+        if let fan = Fan.readAll().first {
+            let curve = CurveEditorModel(minimum: fan.minimum, maximum: fan.maximum)
+            curve.onActivate = { [weak self] in self?.selectStrategy(.curve) }
+            curveModel = curve
+            settingsModel.curveModel = curve
+            settingsModel.fanData = FanData(current: fan.current, minimum: fan.minimum, maximum: fan.maximum)
         }
-    }
-
-    private func openRules() {
-        let fan = Fan.readAll().first.map { FanData(current: $0.current, minimum: $0.minimum, maximum: $0.maximum) }
-        popover.performClose(nil)
-        FanHelperClient.shared.refreshStatus()
-        windows.show("rules", title: "规则", size: NSSize(width: 580, height: 440)) {
-            RulesView(fan: fan, onActivate: { [weak self] in self?.selectStrategy(.rules) })
-        }
+        settingsModel.onActivateRules = { [weak self] in self?.selectStrategy(.rules) }
     }
 
     /// 设置页、曲线编辑器显示的参考温度。
@@ -1646,7 +1797,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             panel.fan = fan.map { FanData(current: $0.current, minimum: $0.minimum, maximum: $0.maximum) }
             panel.groups = groups
         }
-        if windows.isOpen("settings") || windows.isOpen("curve"), tick % 2 == 0 { updateControlTemperatures() }
+        if windows.isOpen("settings"), tick % 2 == 0 { updateControlTemperatures() }
         updateHero()
     }
 
@@ -1871,7 +2022,7 @@ app.run()
 
 extension AppDelegate: SpectrumHost {
     func embed(_ view: SpectrumBarsView?) {
-        if view == nil { island.view.audio = nil }
+        if view == nil { island.view.removeAudio(animated: !sleeping) }
         updateIsland()
     }
     func spectrumLayoutChanged() { updateIsland() }

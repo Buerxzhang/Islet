@@ -3,7 +3,7 @@ import Combine
 import IOKit.graphics
 
 /// 显示器：列出每块屏的可用分辨率，切换分辨率、为外接屏添加 HiDPI 档位。
-/// 真正改系统设置的操作都交给辅助程序 islet-display（见 tools/display-helper.swift）。
+/// 真正改系统设置的操作都交给辅助程序 islet-display（见 Helpers/display-helper.swift）。
 final class DisplayManager: ObservableObject {
     static let shared = DisplayManager()
 
@@ -60,12 +60,33 @@ final class DisplayManager: ObservableObject {
             var best: [String: Mode] = [:]
             for mode in modes where !mode.stretched && mode.height > 0
                 && abs(Double(mode.width) / Double(mode.height) / ratio - 1) <= 0.01
-                && (mode.hiDPI || mode.native) {   // 只列 HiDPI 档位和原生分辨率，低分辨率的普通档位看起来发虚，不列
+                && (mode.native || (mode.hiDPI && mode.pixelWidth >= native.width - 8 && mode.pixelWidth <= native.width * 3 / 2 + 8)) {
+                // 只列原生分辨率和清晰的 HiDPI 档位：绘制尺寸不小于屏幕像素的。
+                // 普通低分辨率档位、绘制尺寸比屏幕小的 HiDPI 档位（如带鱼屏 1290×540 按 2580×1080 绘制）都要放大显示，发虚，不列。
+                // 绘制尺寸超过屏幕 1.5 倍的也不列：切过去显示器要重新建立连接、黑屏重启，接上第二块屏后系统还会直接丢掉这类档位
                 if let existing = best[mode.group], abs(existing.hz - current.hz) <= abs(mode.hz - current.hz) { continue }
                 best[mode.group] = mode
             }
+            // 字比推荐大很多的 HiDPI 档位不列（宽度不到推荐宽度的 70%）：如 34 寸带鱼屏的 1720×720，
+            // 东西大到没法用。4K 屏的 1920×1080 离推荐不远，照常列出
+            if widthMM > 0 {
+                let target = widthMM / 25.4 * 90
+                best = best.filter { !$0.value.hiDPI || Double($0.value.width) >= target * 0.7 }
+            }
             best[current.group] = current
-            return best.values.sorted { ($0.width, $0.hiDPI ? 1 : 0) > ($1.width, $1.hiDPI ? 1 : 0) }
+            // 宽度只差 2% 以内的 HiDPI 档位看起来一样（如 2580×1080 和 2560×1072），只留更宽的；当前在用的总留着
+            var result: [Mode] = []
+            for mode in best.values.sorted(by: { ($0.width, $0.hiDPI ? 1 : 0) > ($1.width, $1.hiDPI ? 1 : 0) }) {
+                if mode.hiDPI, mode.group != current.group, let last = result.last, last.hiDPI,
+                   Double(last.width) <= Double(mode.width) * 1.02 { continue }
+                result.append(mode)
+            }
+            // 有实用的 HiDPI 档位（比原生一半大的）时不列原生普通档位：字太小、也不如 HiDPI 清晰，
+            // 切过去还会黑屏重连。想用原生就关掉 islet 的 HiDPI（正在用时照常列出）
+            if result.contains(where: { $0.hiDPI && $0.width > native.width / 2 + 8 }) {
+                result.removeAll { $0.native && !$0.hiDPI && $0.group != current.group }
+            }
+            return result
         }
 
         /// 有没有实用的 HiDPI 档位：比原生一半更大的那些。
@@ -78,23 +99,40 @@ final class DisplayManager: ObservableObject {
         /// 推荐的大小，规则固定：
         /// 1. 系统给某个 HiDPI 档位标了默认（Mac 内建屏、多数 4K 屏），就用它；
         /// 2. 否则按屏幕物理宽度，选最接近每英寸 90 点的 HiDPI 档位（约等于 24 寸 1080p 屏原生的文字大小，桌面距离下读起来舒服）；
+        ///    原生分辨率也参与比较：1080P 这类屏原生就最接近，推荐原生，不为了 HiDPI 把字放大；
         /// 3. 读不到物理尺寸时，取最宽的 HiDPI 档位。
         var recommended: Mode? {
             let hiDPI = choices.filter(\.hiDPI)
             if let preferred = hiDPI.first(where: \.preferred) { return preferred }
             guard widthMM > 0 else { return hiDPI.max { $0.width < $1.width } }
             let target = widthMM / 25.4 * 90
-            return hiDPI.min { abs(Double($0.width) - target) < abs(Double($1.width) - target) }
+            let candidates = hiDPI + choices.filter { $0.native && !$0.hiDPI }
+            return candidates.min { abs(Double($0.width) - target) < abs(Double($1.width) - target) }
         }
 
-        /// 全部可选的文字大小：原生在最前，往后文字越来越大。
+        /// 不在核心档位里的普通（非 HiDPI）分辨率：放大显示、发虚，只收在“更多分辨率”里，想用也能选。
+        /// 与屏幕同宽高比、不拉伸，每档取最接近当前刷新率的那个。
+        var normalModes: [Mode] {
+            guard let native, native.height > 0 else { return [] }
+            let ratio = Double(native.width) / Double(native.height)
+            let listed = Set(choices.map(\.group))
+            var best: [String: Mode] = [:]
+            for mode in modes where !mode.hiDPI && !mode.stretched && mode.height > 0 && !listed.contains(mode.group)
+                && abs(Double(mode.width) / Double(mode.height) / ratio - 1) <= 0.01 {
+                if let existing = best[mode.group], abs(existing.hz - current.hz) <= abs(mode.hz - current.hz) { continue }
+                best[mode.group] = mode
+            }
+            return Array(best.values)
+        }
+
+        /// 全部可选的大小（核心档位 + 普通分辨率）：原生在最前，往后文字越来越大。
         var allSizes: [Mode] {
-            choices.sorted { ($0.width, $0.hiDPI ? 0 : 1) > ($1.width, $1.hiDPI ? 0 : 1) }
+            (choices + normalModes).sorted { ($0.width, $0.hiDPI ? 0 : 1) > ($1.width, $1.hiDPI ? 0 : 1) }
         }
 
         /// 默认展示的核心档位，最多 5 个：原生、推荐、当前必留，其余挑紧挨着推荐的。
         var sizeOptions: [Mode] {
-            let all = allSizes
+            let all = choices.sorted { ($0.width, $0.hiDPI ? 0 : 1) > ($1.width, $1.hiDPI ? 0 : 1) }
             let limit = 5
             guard all.count > limit else { return all }
             var keep = Set<Int>()
@@ -114,6 +152,7 @@ final class DisplayManager: ObservableObject {
         func label(_ mode: Mode) -> String {
             if mode.group == recommended?.group { return mode.preferred ? "默认" : "推荐" }
             if mode.native && !mode.hiDPI { return "原生" }
+            if !mode.hiDPI { return "普通" }
             guard let recommended else { return "" }
             return mode.width > recommended.width ? "更多空间" : "更大文字"
         }
@@ -150,6 +189,79 @@ final class DisplayManager: ObservableObject {
     private var confirmation: NSAlert?
 
     private init() {}
+
+    // MARK: 屏幕增减后恢复分辨率
+    // 系统按“当前接着哪几块屏”分别记分辨率：关掉 / 接上另一块屏后，会套用那种组合下记的（往往是原生分辨率）。
+    // 这里记住每块屏最近稳定在用的档位，屏幕组合一变就切回去；切回去用 permanently，系统也会把它记进新组合。
+
+    private var remembered: [CGDirectDisplayID: (group: String, hz: Double)] = [:]
+    /// 记的档位在当前组合下没有、临时改用推荐档位的屏：这时的档位不是用户选的，不记，换回能用的组合时还恢复原来选的
+    private var fallback: [CGDirectDisplayID: String] = [:]
+    private var activeSet: Set<CGDirectDisplayID> = []
+    private var pendingCheck: DispatchWorkItem?
+
+    func startRestoring() {
+        refresh()
+        rememberCurrent()
+        NotificationCenter.default.addObserver(forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main) { [weak self] _ in
+            // 组合变化时通知会连着来好几次，系统也要过一会儿才套完它记的设置：等安静下来再看
+            self?.pendingCheck?.cancel()
+            let check = DispatchWorkItem { self?.screensChanged() }
+            self?.pendingCheck = check
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5, execute: check)
+        }
+    }
+
+    /// chosen：用户刚在 islet 里选的，临时档位也算数
+    private func rememberCurrent(chosen: Bool = false) {
+        let active = displays.filter(\.canSwitch)
+        activeSet = Set(active.map(\.id))
+        for display in active where chosen || fallback[display.id] != display.current.group {
+            remembered[display.id] = (display.current.group, display.current.hz)
+            fallback[display.id] = nil
+        }
+    }
+
+    private func screensChanged() {
+        refresh()
+        guard !busy else { return }   // 正在试用新分辨率：等确认结束再记
+        let active = displays.filter(\.canSwitch)
+        guard Set(active.map(\.id)) != activeSet else { rememberCurrent(); return }   // 组合没变：是用户自己改的，记下来
+        activeSet = Set(active.map(\.id))
+        var restored = false
+        for display in active {
+            let want = remembered[display.id]
+            let pick = { (group: String, hz: Double) in
+                display.modes.filter { $0.group == group }.min { abs($0.hz - hz) < abs($1.hz - hz) }
+            }
+            var mode = want.flatMap { pick($0.group, $0.hz) }
+            // 记的档位这个组合下没有：系统给的档位先不当成用户选的
+            fallback[display.id] = want != nil && mode == nil ? display.current.group : nil
+            // 记的档位这个组合下没有，或这块屏是第一次见：开着 islet 的 HiDPI 却落在原生普通档位上，就切到推荐档位
+            if mode == nil, display.current.native, !display.current.hiDPI, overrides[display.id]?.owned == true,
+               let recommended = display.recommended, recommended.hiDPI {
+                mode = pick(recommended.group, display.current.hz)
+                if let mode, want != nil { fallback[display.id] = mode.group }
+            }
+            guard let mode, mode.group != display.current.group,
+                  let target = (CGDisplayCopyAllDisplayModes(display.id, [kCGDisplayShowDuplicateLowResolutionModes as String: true] as CFDictionary)
+                      as? [CGDisplayMode])?.first(where: { $0.ioDisplayModeID == mode.id }) else {
+                if want == nil { remembered[display.id] = (display.current.group, display.current.hz) }
+                continue
+            }
+            var config: CGDisplayConfigRef?
+            guard CGBeginDisplayConfiguration(&config) == .success, let config else { continue }
+            guard CGConfigureDisplayWithDisplayMode(config, display.id, target, nil) == .success else {
+                CGCancelDisplayConfiguration(config)
+                continue
+            }
+            if CGCompleteDisplayConfiguration(config, .permanently) == .success {
+                restored = true
+                if want == nil { remembered[display.id] = (mode.group, mode.hz) }
+            }
+        }
+        if restored { refresh() }
+    }
 
     func refresh() {
         var count: UInt32 = 0
@@ -296,6 +408,7 @@ final class DisplayManager: ObservableObject {
                 // 切换成功不用提示（选中的档位已经变了），只留失败和自动恢复的说明
                 self.message = process.terminationStatus == 0 && text == "已切换" ? nil : text
                 self.refresh()
+                self.rememberCurrent(chosen: true)
             }
         }
     }

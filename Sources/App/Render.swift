@@ -42,7 +42,6 @@ enum RenderTargets {
     bars.update(levels, audible: true)
     let expanded = MetricsIslandView(frame: .zero)
     expanded.segments = probe.segments
-    if launchArguments.contains("hud") { expanded.setHUDImmediately(.init(symbol: "speaker.wave.2.fill", fraction: 0.45, text: "45%")) }
     expanded.trailing = StatusIcons.bluetooth([(symbol: "keyboard", battery: 41), (symbol: "computermouse", battery: 15), (symbol: "headphones", battery: nil)])
     expanded.audio = (bars, bars.preferredWidth)
     let tint = bars.tint!
