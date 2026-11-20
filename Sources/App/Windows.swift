@@ -156,6 +156,14 @@ final class SettingsModel: ObservableObject {
         }
     }
 
+    /// 能不能关掉这一项：岛上至少留一项（音乐、蓝牙、任一指标都算），全关胶囊会整个消失。
+    /// 指标整组关掉时，单项指标不算在岛上。
+    func canTurnOff(_ id: String) -> Bool {
+        let shown = islandOrder.filter { isVisible($0) && (Self.modules.contains($0) || Metric.groupShown) }
+        if id == "metrics" { return shown.contains { $0 == "music" || $0 == "bluetooth" } }
+        return shown.contains { $0 != id }
+    }
+
     /// 显示 / 隐藏某项。
     func setVisible(_ id: String, _ on: Bool) {
         switch id {
@@ -333,7 +341,7 @@ struct SettingsView: View {
         return Button { model.page = page } label: {
             HStack(spacing: 10) {
                 IconTile(symbol: page.symbol, tint: page.tint, size: 24)
-                Text(page.title).font(selected ? Typo.bodyMedium : Typo.settingsBody).foregroundStyle(p.text)
+                Text(page.title).font(selected ? Typo.settingsBodyMedium : Typo.settingsBody).foregroundStyle(p.text)
                 Spacer(minLength: 0)
                 if page == .about {
                     Text("v" + (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "")).font(Typo.settingsCaption).foregroundStyle(p.text3)
@@ -661,10 +669,15 @@ struct SettingsView: View {
                 else if module, let subtitle = info.subtitle { Text(subtitle).font(Typo.settingsCaption).foregroundStyle(p.text3) }
             }
             Spacer(minLength: 8)
+            // 最后一项不能关（开关变灰），免得胶囊整个消失
+            let locked = on && !model.canTurnOff(id)
             Toggle2(isOn: on) { value in
                 model.setVisible(id, value)
                 model.onMetricOrder()
             }
+            .disabled(locked)
+            .opacity(locked ? 0.45 : 1)
+            .help(locked ? "至少留一项" : "")
             Image(systemName: "line.3.horizontal").font(.system(size: 13, weight: .medium)).foregroundStyle(p.text3)
                 .frame(width: 28, height: 30)
                 .help("按住拖动调整顺序")
@@ -707,7 +720,7 @@ struct SettingsView: View {
                     model.refresh()
                 }
             }
-            detailRow(p, "停止播放后收起") {
+            detailRow(p, "声音停止后收起") {   // 只管视频、网页、游戏等；音乐软件暂停时一直显示
                 Segmented(options: SpectrumController.hideDelayChoices,
                           selection: UserDefaults.standard.object(forKey: "spectrumHideDelay") as? Int ?? 10) { value in
                     UserDefaults.standard.set(value, forKey: "spectrumHideDelay")

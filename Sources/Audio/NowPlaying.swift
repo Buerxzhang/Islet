@@ -16,6 +16,8 @@ struct NowPlayingInfo {
     var artwork: NSImage?
     var tint: NSColor?          // 封面主色；视频、拿不到封面、黑白封面时为 nil（显示白色）
     var commands: Set<Int>?     // 应用支持的命令编号（系统报告）；nil 表示没报告
+    /// 音乐软件开着、但还没向系统上报“正在播放”（比如 QQ 音乐播放前）：只显示它的图标和颜色，没有按钮
+    var placeholder = false
 
     /// 显示上一首 / 下一首：以应用报告的支持命令为准（语音消息、网页视频等只支持播放暂停）；
     /// 没报告时按老规则，视频不显示。
@@ -23,6 +25,9 @@ struct NowPlayingInfo {
         if let commands { return commands.contains(NowPlayingMonitor.Command.next.rawValue) || commands.contains(NowPlayingMonitor.Command.previous.rawValue) }
         return !isVideo
     }
+
+    /// 音乐软件：只有它们在灵动岛上显示暂停 / 切歌按钮，暂停时也一直显示（退出才收起）。视频、网页媒体、游戏都不算
+    var isMusicApp: Bool { bundle.map(NowPlayingMonitor.isMusicApp) ?? false }
 
     /// 视频播放器或标记为视频的内容：不取封面颜色。
     var isVideo: Bool {
@@ -50,6 +55,20 @@ final class NowPlayingMonitor: ObservableObject {
     }
 
     @Published private(set) var info: NowPlayingInfo?
+    /// 是不是音乐软件：软件自己声明的类别是“音乐”（App Store 分类），或者在下面的名单里（没声明、声明错的兜底）。
+    /// 每个软件只查一次
+    static func isMusicApp(_ bundle: String) -> Bool {
+        if let cached = musicAppCache[bundle] { return cached }
+        let category = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundle)
+            .flatMap { Bundle(url: $0)?.object(forInfoDictionaryKey: "LSApplicationCategoryType") as? String }
+        let result = category == "public.app-category.music" || musicApps.contains(bundle)
+        musicAppCache[bundle] = result
+        return result
+    }
+    private static var musicAppCache: [String: Bool] = [:]
+    static let musicApps: Set<String> = ["com.netease.163music", "com.apple.Music", "com.spotify.client", "com.tencent.QQMusicMac",
+                                         "com.kugou.mac.kugouMusic", "com.kuwo.mac.KwMusic", "com.apple.podcasts",
+                                         "com.coppertino.Vox", "com.tidal.desktop", "com.amazon.music"]
     /// 出现过的音乐播放器：它们发声时按音乐处理，不当作“其他程序”。
     static var musicPlayers: Set<String> = ["com.netease.163music", "com.apple.Music", "com.spotify.client", "com.tencent.QQMusicMac",
                                             "com.kugou.mac.kugouMusic", "com.kuwo.mac.KwMusic", "com.apple.podcasts"]
@@ -58,6 +77,7 @@ final class NowPlayingMonitor: ObservableObject {
     private var buffer = Data()
     private var running = false
     private var artworkCache: (id: String, image: NSImage, tint: NSColor?)?
+    private var lastPlayed: NowPlayingInfo?   // 本次最后播放的那首（暂停时保留它的封面）
     private var artworkPendingSince: Date?   // 切歌后新封面还没到的时刻
     private var clearWork: DispatchWorkItem?
     private var pauseWork: DispatchWorkItem?
@@ -156,9 +176,11 @@ final class NowPlayingMonitor: ObservableObject {
         next.elapsed = (object["elapsed"] as? NSNumber)?.doubleValue
         next.rate = (object["rate"] as? NSNumber)?.doubleValue ?? 1
         next.timestamp = (object["timestamp"] as? NSNumber)?.doubleValue
-        // 有的播放器（如网易云）切换时“是否在播放”会报错，进度在走（rate > 0）也算在播放
-        next.playing = (object["playing"] as? NSNumber)?.boolValue == true || next.rate > 0 && object["rate"] != nil
         next.bundle = object["bundle"] as? String
+        // 网易云切歌时“是否在播放”会报错：它的进度在走（rate > 0）也算在播放。
+        // 只对网易云这样判断：QQ 音乐暂停后 rate 仍报 1，按 rate 会把暂停当成播放，按钮就和实际对不上
+        let rateSaysPlaying = next.bundle == "com.netease.163music" && next.rate > 0 && object["rate"] != nil
+        next.playing = (object["playing"] as? NSNumber)?.boolValue == true || rateSaysPlaying
         next.mediaType = object["mediaType"] as? String
         next.commands = (object["commands"] as? [NSNumber]).map { Set($0.map(\.intValue)) }
         // 封面：新封面随数据一起来；之后只带编号，沿用缓存
@@ -173,7 +195,8 @@ final class NowPlayingMonitor: ObservableObject {
                 artworkWork = nil
                 next.artwork = cache.image
                 next.tint = cache.tint
-            } else if info?.artwork != nil {
+            } else if info?.artwork != nil, !next.title.isEmpty, next.bundle == info?.bundle {
+                // 只在同一个播放器里切歌时沿用（刚打开的播放器、没有歌曲信息的不沿用，免得显示别的歌的封面）
                 // 切歌时新封面通常晚一点才到：最多 3 秒内先沿用上一张，避免封面消失又出现、面板和菜单栏宽度跳动
                 let since = artworkPendingSince ?? Date()
                 artworkPendingSince = since
@@ -196,7 +219,31 @@ final class NowPlayingMonitor: ObservableObject {
             }
         }
         if next.isVideo { next.tint = nil } else if let bundle = next.bundle { Self.musicPlayers.insert(bundle) }
-        let value: NowPlayingInfo? = next.title.isEmpty && next.artwork == nil ? nil : next
+        // 没有歌曲信息也没封面：一般是刚打开的播放器。音乐软件照样算（打开就展开，显示软件图标颜色、不显示封面），其他的不算
+        var value: NowPlayingInfo? = next.title.isEmpty && next.artwork == nil && !next.isMusicApp ? nil : next
+        // 封面只认真正播放过的：播放中显示封面；播放过再暂停，保留最后播放那首；
+        // 本次还没播放过（刚打开播放器，它可能先报歌曲、又改成只报软件名）就用软件颜色、不显示封面，免得颜色来回跳。
+        // 播放器退出（没有信息）时清掉，下次打开从头算
+        if var current = value {
+            if current.playing {
+                lastPlayed = current
+            } else if let last = lastPlayed, last.bundle == current.bundle {
+                if current.title.isEmpty || current.artwork == nil {
+                    let playing = current.playing, commands = current.commands ?? last.commands
+                    current = last
+                    current.playing = playing
+                    current.commands = commands
+                } else {
+                    lastPlayed = current   // 暂停时换了歌（在播放器里点了下一首）：用新歌
+                }
+            } else {
+                current.artwork = nil
+                current.tint = nil
+            }
+            value = current
+        } else {
+            lastPlayed = nil
+        }
         clearWork?.cancel()
         clearWork = nil
         pauseWork?.cancel()

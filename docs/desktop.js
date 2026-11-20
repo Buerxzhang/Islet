@@ -166,7 +166,7 @@
     const bg = glass ? "rgba(0,0,0,0.42)" : SET.bg !== "黑色"   // 不悬浮时的玻璃按渐变画
       ? `linear-gradient(90deg, ${S.playing ? `color-mix(in srgb, ${t.via} 70%, #000)` : "#004b6b"} 0%, #0f0f10 100%)` : "#000";
     island.classList.toggle("glass", glass);
-    island.style.setProperty("--ibg", bg);   // 分体时每个小胶囊用同一个底色
+    island.style.setProperty("--ibg", bg);   // 分体时每个小胶囊用同一个底色（按整条胶囊铺开，见 alignBackdrop）
     island.style.background = SET.split ? "transparent" : bg;
     island.classList.toggle("float", SET.float);
     island.classList.toggle("split", SET.split);
@@ -176,8 +176,10 @@
     barsEl.classList.toggle("dots", SET.shape === "点阵");
     const barColor = SET.color === "白色" ? "#f2f2f2" : SET.color === "图标色" ? "#ff5a5a" : t.bar;
     island.style.setProperty("--bar", `color-mix(in srgb, ${barColor} 80%, #fff)`);   // 深色底上调浅一些，按钮同色
-    const hidden = !S.playing && (SET.collapse === "立即" || (SET.collapse === "10 秒" && Date.now() - S.pausedAt > 10000));
+    // 演示里放的都是音乐软件：暂停时一直显示（和软件一致，退出音乐软件才收起）
+    const hidden = false;
     arrangeIsland(hidden);
+    alignBackdrop();
     // 蓝牙：每台设备一个圆环，环是电量；读不到电量的只画灰色底环
     $(".island .bt").innerHTML = S.bt.filter((d) => d.on).map((d) =>
       `<span class="ring">${ringSVG(btLevel(d) ?? 0, 16, 2, btLevel(d) == null ? "transparent" : batteryColor(btLevel(d)))}<svg class="g" viewBox="0 0 24 24">${SOLID[d.icon]}</svg></span>`).join("");
@@ -187,6 +189,16 @@
   const isModule = (id) => id === "music" || id === "metrics" || id === "bt";
   const kindOf = (id) => (id === "music" ? 0 : id === "bt" ? 2 : 1);
   const onIsland = (id) => !SET.hidden.has(id) && (isModule(id) || SET.metrics);
+  // 分体时三个小胶囊共用一条渐变（和软件一致）：渐变按整条胶囊的宽度铺开，每段只露出自己那一截，
+  // 而不是每段各画一遍完整渐变。胶囊宽度变化（音乐展开 / 收起）时重新对齐
+  function alignBackdrop() {
+    const width = island.scrollWidth;
+    island.querySelectorAll(".grp").forEach((g) => {
+      g.style.backgroundSize = SET.split ? `${width}px 100%` : "";
+      g.style.backgroundPosition = SET.split ? `${-g.offsetLeft}px 0` : "";
+    });
+  }
+  new ResizeObserver(alignBackdrop).observe(island);
   let lastArrange = "";
   function arrangeIsland(musicCollapsed) {
     const ids = (SET.split ? grouped(SET.order) : SET.order).filter((id) => onIsland(id) && !(id === "music" && musicCollapsed));
@@ -596,7 +608,7 @@
   function detailOf(id) {
     const d = (...rows) => join(...rows);
     switch (id) {
-      case "music": return d(row("其他程序的声音", "", tg("other")), row("停止播放后收起", "", sg("collapse", ["立即", "10 秒", "不隐藏"], 220)),
+      case "music": return d(row("其他程序的声音", "", tg("other")), row("声音停止后收起", "", sg("collapse", ["立即", "10 秒", "不隐藏"], 220)),
         row("形状", "", sg("shape", ["竖条", "点阵"], 190)), row("颜色", "", sg("color", ["专辑色", "图标色", "白色"], 220)),
         row("封面旋转", "", tg("spin")), row("播放按钮", "", tg("buttons")),
         row("灵敏度", "", sg("sens", ["低", "标准", "高"], 190)), row("系统录音权限", "不录麦克风", btn("打开权限设置")));
@@ -717,17 +729,17 @@
   }
   let checking = false;
   function aboutPage() {
-    return `<div class="about"><img src="icon-b1a28c54b977.png" alt=""><div><div><b>islet</b> <small>v1.4.0 (79)</small></div><div class="sub">菜单栏里的灵动岛</div></div></div>` +
+    return `<div class="about"><img src="icon-b1a28c54b977.png" alt=""><div><div><b>islet</b> <small>v1.4.1 (80)</small></div><div class="sub">菜单栏里的灵动岛</div></div></div>` +
       section("项目", row("Buerxzhang / islet", "GitHub 开源项目", `<span class="btns"><a class="pbtn" href="./">官网</a><a class="pbtn" href="https://github.com/Buerxzhang/islet" target="_blank" rel="noopener">GitHub</a><a class="pbtn" href="https://github.com/Buerxzhang/islet" target="_blank" rel="noopener">★ Star</a></span>`, tile("#1d1d1f", '<path d="M8 8l-4 4 4 4M16 8l4 4-4 4M14 5l-4 14"/>'))) +
       section("更新", join(
-        row(checking ? "软件更新" : "已是最新版本", checking ? "正在查询 GitHub…" : "当前是 1.4.0", btn(checking ? "检查中…" : "检查更新", 'data-check="1"'), tile("#0a84ff", '<path d="M20 12a8 8 0 1 1-2.3-5.7M20 4v4h-4"/>')),
+        row(checking ? "软件更新" : "已是最新版本", checking ? "正在查询 GitHub…" : "当前是 1.4.1", btn(checking ? "检查中…" : "检查更新", 'data-check="1"'), tile("#0a84ff", '<path d="M20 12a8 8 0 1 1-2.3-5.7M20 4v4h-4"/>')),
         row("自动检查更新", "", tg("autoUpdate"), tile("#ff9f0a", '<path d="M6 16V11a6 6 0 0 1 12 0v5l2 2H4zM10 21h4" fill="#fff" stroke="none"/>')))) +
       section("诊断", row("自检通过，一切正常", "反馈时自动复制报告，粘贴即可", `<span class="btns">${btn("复制报告", 'data-copy="1"')}<a class="pbtn" href="https://github.com/Buerxzhang/islet/issues/new" target="_blank" rel="noopener">反馈问题</a></span>`, tile("#ff453a", '<path d="M6 4v5a4 4 0 0 0 8 0V4M10 13v2a5 5 0 0 0 10 0v-2"/><circle cx="20" cy="11" r="1.6"/>')));
   }
 
   function renderSettings() {
     win.querySelector(".side").innerHTML = PAGES.map(([name, color, path], i) => (PAGE_SEP.has(i) ? '<div class="sep"></div>' : "") +
-      `<div class="nav${SET.page === name ? " sel" : ""}" data-page="${name}">${tile(color, path, 24)}<span>${name}</span>${name === "关于" ? "<small>v1.4.0</small>" : ""}</div>`).join("");
+      `<div class="nav${SET.page === name ? " sel" : ""}" data-page="${name}">${tile(color, path, 24)}<span>${name}</span>${name === "关于" ? "<small>v1.4.1</small>" : ""}</div>`).join("");
     const content = win.querySelector(".content"), scroll = content.scrollTop;
     content.innerHTML = `<h3>${SET.page}</h3>` + { 灵动岛: islandPage, 扩展功能: extPage, 通用: generalPage, 关于: aboutPage, ...pageFns }[SET.page]();
     content.scrollTop = scroll;
@@ -784,7 +796,7 @@
       return;
     }
     if (e.target.closest("[data-copy]")) {
-      const report = "islet 1.4.0 (79) · 诊断报告（示例）\n机型：Mac（示例）\n系统：macOS 15\n传感器：8 个\n风扇：自动";
+      const report = "islet 1.4.1 (80) · 诊断报告（示例）\n机型：Mac（示例）\n系统：macOS 15\n传感器：8 个\n风扇：自动";
       navigator.clipboard?.writeText(report).catch(() => {});
       showToast("已复制诊断报告（示例），到 GitHub 粘贴即可");
       return;
@@ -1041,7 +1053,7 @@
     const check = (on) => `<i>${on ? "✓" : ""}</i>`;
     const item = (m, label, { on = false, off = false, id = "", kbd = "" } = {}) =>
       `<div class="${off ? "dis" : ""}" ${off ? "" : `data-m="${m}"`} ${id ? `data-id="${id}"` : ""}>${check(on)}${label}${kbd ? `<kbd>${kbd}</kbd>` : ""}</div>`;
-    let html = `<div class="dis"><i></i>islet 1.4.0</div><hr>`;
+    let html = `<div class="dis"><i></i>islet 1.4.1</div><hr>`;
     if (at && shown.includes(at)) {
       const name = nameOf(at);
       html += item("vis", isModule(at) ? `隐藏${name}模块` : /^[A-Za-z]/.test(name) ? `隐藏 ${name} 指标` : `隐藏${name}指标`, { off: lastOne, id: at });

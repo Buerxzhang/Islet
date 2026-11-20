@@ -378,9 +378,11 @@ final class SpectrumBarsView: NSView {
     /// 放在指标灵动岛里：底色由灵动岛统一画，这里不画胶囊，但按深色底配色。
     var embedded = false { didSet { appearance = embedded ? NSAppearance(named: .darkAqua) : nil; refresh() } }
 
-    private var showsControls: Bool { look.controls && hasMedia }
+    /// 正在播放的是传统音乐软件：只有这时显示暂停 / 切歌按钮，视频、网页、游戏都不显示
+    var musicApp = false { didSet { if oldValue != musicApp { controlImagesKey = ""; refresh() } } }
+    private var showsControls: Bool { look.controls && hasMedia && musicApp }
     /// 右侧圆形图标：音乐模式跟随播放按钮；其他程序发声时单独显示它的图标。
-    private var showsIcon: Bool { appIcon != nil && (showsControls || !hasMedia) }
+    private var showsIcon: Bool { appIcon != nil && (showsControls || !hasMedia || !musicApp) }
     /// 最右边是圆形的播放器图标（排在胶囊右端时让它和圆头同心）。
     var trailsWithCircle: Bool { showsIcon }
 
@@ -856,6 +858,12 @@ final class SpectrumController: NSObject, NSPopoverDelegate {
         nowPlayingSubscription = NowPlayingMonitor.shared.$info.receive(on: DispatchQueue.main).sink { [weak self] info in
             self?.showNowPlaying(info)
         }
+        // 音乐软件打开 / 退出：没上报“正在播放”的（如 QQ 音乐播放前）也先显示它的图标
+        let center = NSWorkspace.shared.notificationCenter
+        for name in [NSWorkspace.didLaunchApplicationNotification, NSWorkspace.didTerminateApplicationNotification] {
+            center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in self?.refreshRunningMusicApp() }
+        }
+        refreshRunningMusicApp()
         started = true
         watchOutputDevice()
         apply()
@@ -905,24 +913,27 @@ final class SpectrumController: NSObject, NSPopoverDelegate {
     /// 按“谁在发声”决定显示：音乐播放中 → 封面、按钮、播放器图标；
     /// 其他程序在发声 → 白色频谱 + 该程序图标；否则沿用（暂停的）播放信息。
     private func render() {
-        let info = NowPlayingMonitor.shared.info
+        let info = displayInfo
         panel.source = source
         if let source {
             panel.nowPlaying = nil
             barsView?.tint = nil
             barsView?.artwork = nil
             barsView?.hasMedia = false
+            barsView?.musicApp = false
             playerBundle = nil
             sourceIconPID = source.pid
             barsView?.appIcon = source.cgIcon
             barsView?.iconTint = source.icon.flatMap(NowPlayingMonitor.dominantColor(of:))
             barsView?.playing = false
         } else {
-            panel.nowPlaying = info
+            panel.nowPlaying = info?.placeholder == true ? nil : info
             barsView?.tint = info?.tint
             barsView?.artwork = info?.isVideo == true ? nil : info?.artwork
             barsView?.hasMedia = info != nil
-            if info?.bundle != playerBundle || sourceIconPID != nil {
+            barsView?.musicApp = info?.isMusicApp == true && info?.placeholder != true   // 占位时没有按钮
+            // 视图刚建好时图标还没设（信息可能比视图先到）：也要补上
+            if info?.bundle != playerBundle || sourceIconPID != nil || barsView?.appIcon == nil {
                 sourceIconPID = nil
                 playerBundle = info?.bundle
                 barsView?.appIcon = playerBundle.flatMap(Self.appIcon(bundle:))
@@ -938,6 +949,31 @@ final class SpectrumController: NSObject, NSPopoverDelegate {
         visualizer.model.setNowPlaying(panel.nowPlaying, source: panel.source)
     }
     private var sourceIconPID: pid_t?
+
+    /// 正在运行的音乐软件（几个都开着时取最近打开的）
+    private var runningMusicApp: String?
+    private func refreshRunningMusicApp() {
+        let apps = NSWorkspace.shared.runningApplications.filter {
+            $0.activationPolicy == .regular && $0.bundleIdentifier.map(NowPlayingMonitor.isMusicApp) == true
+        }
+        let next = apps.max { ($0.launchDate ?? .distantPast) < ($1.launchDate ?? .distantPast) }?.bundleIdentifier
+        guard next != runningMusicApp else { return }
+        runningMusicApp = next
+        render()
+    }
+
+    /// 岛上音乐段显示的播放信息：系统“正在播放”是音乐软件就用它；不是（或没有）而有音乐软件开着，
+    /// 就显示那个音乐软件（占位：图标和颜色，没有按钮）；视频等正在播放时仍显示视频
+    private var displayInfo: NowPlayingInfo? {
+        let info = NowPlayingMonitor.shared.info
+        if info?.isMusicApp == true || info?.playing == true { return info }
+        guard let bundle = runningMusicApp else { return info }
+        var placeholder = NowPlayingInfo()
+        placeholder.bundle = bundle
+        placeholder.playing = false
+        placeholder.placeholder = true
+        return placeholder
+    }
 
     /// 读屏：岛上音乐部分现在显示的是谁，如“正在播放 网易云音乐 · 晴天”“正在发声 QuickTime Player”。
     var accessibilitySummary: String? {
@@ -974,8 +1010,10 @@ final class SpectrumController: NSObject, NSPopoverDelegate {
             }
         }
         if info?.playing == true, source == nil { return true }
-        let isPlayer = source?.bundle.map { NowPlayingMonitor.musicPlayers.contains($0) } ?? false
-        return source == nil || isPlayer || Self.showsOtherSounds
+        // 没在播放、也查不到是哪个程序在出声：是通知音等系统声音，不展开（否则会顶着暂停的播放器信息展开）
+        guard let source else { return false }
+        let isPlayer = source.bundle.map { NowPlayingMonitor.musicPlayers.contains($0) } ?? false
+        return isPlayer || Self.showsOtherSounds
     }
 
     private var silentChecks = 0   // 正在播放的应用连续几次没出声
@@ -1090,6 +1128,11 @@ final class SpectrumController: NSObject, NSPopoverDelegate {
             popover.performClose(nil)
             return
         }
+        // 音乐软件还没开始播放（占位）：点了直接打开它
+        if source == nil, displayInfo?.placeholder == true {
+            openPlayer()
+            return
+        }
         panel.look = SpectrumLook.current
         panel.error = analyzer.error
         popover.appearance = NSAppearance(named: .aqua)   // 面板统一浅色
@@ -1180,10 +1223,13 @@ final class SpectrumController: NSObject, NSPopoverDelegate {
         let revealing = revealUntil.map { $0 > Date() } ?? false
         // 播放器还在“播放中”（切歌间隙、安静段落）不隐藏；暂停 / 停止后安静超过设定时间才隐藏
         let playing = NowPlayingMonitor.shared.info?.playing == true
+        // 音乐软件暂停了：一直显示（随时能点继续），退出软件、“正在播放”信息消失才收起
+        let musicPaused = displayInfo?.isMusicApp == true && source == nil
+        if musicPaused, !shown { shown = true }
         // 播放器报告正在播放、却截不到声音（没有“系统录音”权限、系统静音、音量为 0）：照样展开封面和按钮，频谱是平的
         if playing, source == nil, !shown { shown = true }
         let delay = Self.hideDelay
-        if delay > 0, quietFor > delay, !playing, !showingPanel, !revealing {
+        if delay > 0, quietFor > delay, !playing, !musicPaused, !showingPanel, !revealing {
             if shown { shown = false }
             if fast { schedule(fast: false) }
         } else {

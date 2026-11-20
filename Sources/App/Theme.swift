@@ -58,6 +58,7 @@ enum Typo {
     /// 设置窗口是独立窗口，正文用 macOS 标准的 13pt，说明 12pt（面板仍是 12 / 11）
     static let settingsBody = Font.system(size: 13)
     static let settingsCaption = Font.system(size: 12)
+    static let settingsBodyMedium = Font.system(size: 13, weight: .medium)   // 侧栏选中项：和正文同字号，只加粗
     /// 数值：和岛上一样用窄体 + 等宽数字，从胶囊点开面板时字形连贯。
     static func number(_ size: CGFloat, _ weight: Font.Weight = .semibold) -> Font {
         .system(size: size, weight: weight).width(.condensed).monospacedDigit()
