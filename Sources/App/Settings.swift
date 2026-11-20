@@ -101,28 +101,6 @@ extension Metric {
 }
 
 /// 外观：跟随系统 / 浅色 / 深色。只作用于本程序的面板和窗口，不影响菜单栏图标。
-enum AppearanceSetting: Int, CaseIterable {
-    case system, light, dark
-
-    var label: String { ["跟随系统", "浅色", "深色"][rawValue] }
-
-    static var current: AppearanceSetting {
-        AppearanceSetting(rawValue: UserDefaults.standard.integer(forKey: "appearance")) ?? .system
-    }
-
-    static func select(_ value: AppearanceSetting) {
-        UserDefaults.standard.set(value.rawValue, forKey: "appearance")
-    }
-
-    var nsAppearance: NSAppearance? {
-        switch self {
-        case .system: return nil
-        case .light: return NSAppearance(named: .aqua)
-        case .dark: return NSAppearance(named: .darkAqua)
-        }
-    }
-}
-
 /// 菜单栏指标的顺序（从左到右），用户可在设置里拖动调整。
 /// 灵动岛上各项从左到右的顺序（音乐、各指标、蓝牙都可拖动）。存为名称数组：music、cpu…、bluetooth。
 enum IslandOrder {

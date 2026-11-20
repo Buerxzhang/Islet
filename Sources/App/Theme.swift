@@ -20,24 +20,15 @@ struct Palette {
     let warm: Color
     let hot: Color
 
-    static let dark = Palette(
-        // 底色和岛的胶囊是同一种近黑，卡片在上面稍微提亮
-        panel: Color(hex: 0x0F0F10), card: Color(hex: 0x1C1C1E), cardStroke: .white.opacity(0.07),
-        inset: Color(hex: 0x09090A), hover: .white.opacity(0.06),
-        text: Color(hex: 0xF5F5F7), text2: Color(hex: 0xA1A1A6), text3: Color(hex: 0x8A8A90),
-        separator: .white.opacity(0.10),
-        accentText: Color(hex: 0x46C8FF), accentFill: Color(hex: 0x46C8FF),
-        cool: Color(hex: 0x30D158), warm: Color(hex: 0xFF9F0A), hot: Color(hex: 0xFF453A))
-
     static let light = Palette(
         panel: Color(hex: 0xF2F2F5), card: .white, cardStroke: .black.opacity(0.08),
         inset: Color(hex: 0xE4E4EA), hover: .black.opacity(0.05),
         text: Color(hex: 0x1D1D1F), text2: Color(hex: 0x55555B), text3: Color(hex: 0x6E6E73),
         separator: .black.opacity(0.10),
-        accentText: Color(hex: 0x00669E), accentFill: Color(hex: 0x1A9BD7),
+        // 主题色 #0096D6：和应用图标的底色一致（取自官网背景渐变），文字用再深一点的同色
+        accentText: Color(hex: 0x006E9E), accentFill: Color(hex: 0x0096D6),
         cool: Color(hex: 0x1B8A3E), warm: Color(hex: 0xA65C00), hot: Color(hex: 0xC4000E))
 
-    static func resolve(_ scheme: ColorScheme) -> Palette { scheme == .dark ? .dark : .light }
 
     /// 温度着色（传感器列表、曲线编辑器）：和岛、面板圆环同一套阈值（Metric.level），< 80° 绿，80–95° 橙，≥ 95° 红。
     func temperature(_ celsius: Double?) -> Color {
@@ -73,16 +64,15 @@ enum Typo {
     }
 }
 
-/// 通过环境取 palette：`@Environment(\.colorScheme)` 解析，离屏渲染时也能拿到。
+/// 面板和窗口统一用浅色（不再有主题设置）。
 struct Themed<Content: View>: View {
-    @Environment(\.colorScheme) private var scheme
     let content: (Palette) -> Content
 
     init(@ViewBuilder content: @escaping (Palette) -> Content) {
         self.content = content
     }
 
-    var body: some View { content(Palette.resolve(scheme)) }
+    var body: some View { content(.light) }
 }
 
 // MARK: - 卡片

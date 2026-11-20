@@ -146,6 +146,16 @@ final class MetricsIslandView: NSView {
         }
     }
     private var backdropFade: ColorFade?
+    /// 玻璃样式（只在悬浮时）：不画底色，由悬浮窗里垫在下面的玻璃（GlassBackdrop）按 onCapsules 给的形状铺
+    var glass = false { didSet { if oldValue != glass { needsDisplay = true } } }
+    /// 每次绘制时报告各个小胶囊的范围（视图坐标），玻璃跟着它走；没有内容时是空数组
+    var onCapsules: (([NSRect]) -> Void)?
+    private var reportedCapsules: [NSRect] = []
+    private func report(_ rects: [NSRect]) {
+        guard rects != reportedCapsules else { return }
+        reportedCapsules = rects
+        onCapsules?(rects)
+    }
     /// 此刻画出来的底色（渐变过程中是两者之间的颜色）。
     private var shownBackdrop: [NSColor] { backdropFade?.colors ?? backdrop }
     static let dividerSpace: CGFloat = 8   // 分隔线两侧的留白
@@ -558,10 +568,10 @@ final class MetricsIslandView: NSView {
 
     override func draw(_ dirtyRect: NSRect) {
         let items = shownItems()
-        guard !items.isEmpty else { return }
+        guard !items.isEmpty, capsule.width > 0 else { report([]); return }
         let shape = capsule
-        guard shape.width > 0 else { return }
         let parts = shapes
+        report(glass ? parts : [])
         let path = NSBezierPath()
         for part in parts {
             let radius = min(part.height, part.width) / 2
@@ -571,7 +581,11 @@ final class MetricsIslandView: NSView {
         NSGraphicsContext.saveGraphicsState()
         path.addClip()
         let backdrop = shownBackdrop
-        if backdrop.count > 1, backdrop.first != backdrop.last, let gradient = NSGradient(colors: backdrop) {
+        if glass {
+            // 玻璃在下面；再压一层半透明黑，亮壁纸、亮窗口上白字也看得清（系统玻璃的色调压不了这么暗）
+            NSColor(white: 0, alpha: 0.42).setFill()
+            shape.fill()
+        } else if backdrop.count > 1, backdrop.first != backdrop.last, let gradient = NSGradient(colors: backdrop) {
             gradient.draw(in: shape, angle: 0)
         } else {
             (backdrop.first ?? .black).setFill()
@@ -616,6 +630,67 @@ final class MetricsIslandView: NSView {
                 put(image, item.alpha)
             }
             NSGraphicsContext.restoreGraphicsState()
+        }
+    }
+}
+
+
+/// 悬浮胶囊的玻璃底：每个小胶囊一块玻璃，跟着胶囊的形状和宽度走。
+/// macOS 26 起用系统的 Liquid Glass（相邻的小胶囊靠近时会像液体一样连起来），更早的系统用毛玻璃。
+/// 加一层深色调，保证白色文字在亮壁纸上也看得清。
+final class GlassBackdrop: NSView {
+    private var pieces: [NSView] = []
+    private lazy var container: NSView = {
+        let host: NSView
+        if #available(macOS 26.0, *) {
+            let merge = NSGlassEffectContainerView(frame: bounds)
+            merge.spacing = 0   // 分体的小胶囊各自分开，不粘成一团
+            let content = NSView(frame: bounds)
+            merge.contentView = content
+            host = merge
+        } else {
+            host = NSView(frame: bounds)
+        }
+        host.autoresizingMask = [.width, .height]
+        addSubview(host)
+        return host
+    }()
+    private var holder: NSView {
+        if #available(macOS 26.0, *), let merge = container as? NSGlassEffectContainerView, let content = merge.contentView { return content }
+        return container
+    }
+
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }   // 点击交给上面的胶囊
+
+    func update(_ rects: [NSRect]) {
+        while pieces.count < rects.count {
+            let piece: NSView
+            if #available(macOS 26.0, *) {
+                let glass = NSGlassEffectView()
+                glass.appearance = NSAppearance(named: .darkAqua)   // 深色玻璃：亮壁纸、亮窗口上白字也看得清
+                glass.tintColor = NSColor(white: 0, alpha: 0.55)
+                piece = glass
+            } else {
+                let blur = NSVisualEffectView()
+                blur.material = .hudWindow
+                blur.appearance = NSAppearance(named: .darkAqua)
+                blur.blendingMode = .behindWindow
+                blur.state = .active
+                blur.wantsLayer = true
+                blur.layer?.masksToBounds = true
+                piece = blur
+            }
+            holder.addSubview(piece)
+            pieces.append(piece)
+        }
+        for (index, piece) in pieces.enumerated() {
+            guard index < rects.count else { piece.isHidden = true; continue }
+            let rect = rects[index]
+            piece.isHidden = false
+            piece.frame = rect
+            let radius = min(rect.width, rect.height) / 2
+            if #available(macOS 26.0, *), let glass = piece as? NSGlassEffectView { glass.cornerRadius = radius }
+            else { piece.layer?.cornerRadius = radius }
         }
     }
 }

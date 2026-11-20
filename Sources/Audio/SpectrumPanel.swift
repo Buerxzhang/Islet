@@ -288,7 +288,7 @@ struct SpectrumLookEditor: View {
                 }
                 }
                 if part != .music {
-                row(p, "底色") {
+                row(p, part == .backdrop ? "样式" : "底色") {   // 设置的灵动岛页叫“样式”
                     Segmented(options: SpectrumLook.Backdrop.allCases.map { ($0, $0.label) }, selection: look.backdrop) { value in
                         var next = look; next.backdrop = value; onChange(next)
                     }
@@ -298,7 +298,6 @@ struct SpectrumLookEditor: View {
                 HStack {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("封面旋转").font(Typo.body).foregroundStyle(p.text)
-                        Text("播放时像黑胶一样转").font(Typo.caption).foregroundStyle(p.text3)
                     }
                     Spacer()
                     Toggle2(isOn: look.spin) { on in
@@ -308,7 +307,6 @@ struct SpectrumLookEditor: View {
                 HStack {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("播放按钮").font(Typo.body).foregroundStyle(p.text)
-                        Text("上一首、播放 / 暂停、下一首").font(Typo.caption).foregroundStyle(p.text3)
                     }
                     Spacer()
                     Toggle2(isOn: look.controls) { on in

@@ -15,7 +15,7 @@ html.desk body {
   margin: 0; color: #1d1d1f; user-select: none; -webkit-user-select: none;
   font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", sans-serif;
   /* 壁纸：上方青绿、下方蓝色的渐变 */
-  background-image: linear-gradient(0deg, #007adf 0%, #00ecbc 100%);
+  background-image: linear-gradient(0deg, #0096d6 0%, #00ecbc 100%);
 }
 html.desk a { text-decoration: none; }
 
@@ -128,6 +128,8 @@ html.desk .dock { display: flex; position: fixed; z-index: 9700; left: 50%; bott
 .island.split { padding: 0; gap: 5px; box-shadow: none; }
 .island.split .grp { display: flex; align-items: center; height: 22px; padding: 0 3px; border-radius: 12px; background: var(--ibg, #000); box-shadow: 0 0 0 0.5px rgba(255,255,255,0.22); }
 .island.split.float { box-shadow: none; }
+.island.glass, .island.glass.split .grp { background: rgba(0,0,0,0.42); -webkit-backdrop-filter: blur(16px) saturate(170%); backdrop-filter: blur(16px) saturate(170%); }
+.island.glass.split { background: transparent; -webkit-backdrop-filter: none; backdrop-filter: none; }
 .island.split.float .grp { box-shadow: 0 8px 24px rgba(0,0,0,0.35), 0 0 0 0.5px rgba(255,255,255,0.22); }
 .metric { flex-direction: column; justify-content: center; align-items: center; line-height: 1; padding: 0 3px; margin: 0 1px; }
 .metric b { font-size: 7px; letter-spacing: 0.06em; color: rgba(255,255,255,0.55); font-weight: 700; }
@@ -166,7 +168,7 @@ html.desk .dock { display: flex; position: fixed; z-index: 9700; left: 50%; bott
 .kv dd { margin: 0; font-weight: 600; font-variant-numeric: tabular-nums; }
 .segctl { display: inline-flex; background: var(--pn-inset); border-radius: 7px; padding: 2px; margin: 12px 0 6px; }
 .segctl button { border: 0; background: none; font: inherit; font-size: 11px; font-weight: 500; color: var(--pn-text2); padding: 3px 10px; border-radius: 5px; cursor: pointer; }
-.segctl button.sel { background: var(--pn-sel); color: var(--pn-accent-text); box-shadow: 0 0 0 1px rgba(26,155,215,0.45) inset; }
+.segctl button.sel { background: var(--pn-sel); color: var(--pn-accent-text); box-shadow: 0 0 0 1px rgba(0,150,214,0.45) inset; }
 .chart { width: 100%; height: 56px; display: block; }
 .chart-foot { display: flex; justify-content: space-between; color: var(--pn-text3); font-size: 11px; margin-top: 4px; }
 .legend i { display: inline-block; width: 8px; height: 3px; border-radius: 2px; margin: 0 4px 2px 0; vertical-align: middle; }
@@ -243,7 +245,7 @@ html.desk .desk-only { display: block; }
 html.desk .page-only { display: none; }
 html.desk .panel { display: block; }
 
-@keyframes flash { 0%, 60% { background: rgba(26,155,215,0.16); } 100% { background: transparent; } }
+@keyframes flash { 0%, 60% { background: rgba(0,150,214,0.16); } 100% { background: transparent; } }
 
 /* 菜单栏左上角：只用 islet 的胶囊标志（白色，镂空圆点和脉搏线），不要深色方块底 */
 .brand .mark { display: none; }
@@ -259,7 +261,7 @@ html.desk .win.settings > .tb .ttl { color: var(--pn-text2); }
 .settings .side { width: 190px; flex: none; padding: 14px 10px; background: var(--pn-side); display: flex; flex-direction: column; gap: 2px; }
 .settings .sep-v { width: 1px; flex: none; background: var(--pn-sep); }
 .settings .nav { display: flex; align-items: center; gap: 10px; height: 34px; padding: 0 8px; border-radius: 8px; cursor: pointer; }
-.settings .nav.sel { background: rgba(26,155,215,0.2); font-weight: 500; }
+.settings .nav.sel { background: rgba(0,150,214,0.2); font-weight: 500; }
 .settings .nav small { margin-left: auto; color: var(--pn-text3); font-size: 11px; }
 .settings .side .sep { height: 1px; background: var(--pn-sep); margin: 6px 8px; }
 .settings .tile { display: grid; place-items: center; flex: none; }
@@ -284,7 +286,7 @@ html.desk .win.settings > .tb .ttl { color: var(--pn-text2); }
 .settings .tg.on::after { left: 15px; }
 .settings .sg { display: flex; gap: 2px; padding: 2px; background: var(--pn-inset); border-radius: 8px; flex: none; }
 .settings .sg button { flex: 1; min-height: 26px; border: 0; background: none; font: inherit; font-weight: 500; color: var(--pn-text2); border-radius: 6px; cursor: pointer; white-space: nowrap; padding: 0 6px; }
-.settings .sg button.sel { background: var(--pn-sel); color: var(--pn-accent-text); box-shadow: inset 0 0 0 1px rgba(26,155,215,0.45); }
+.settings .sg button.sel { background: var(--pn-sel); color: var(--pn-accent-text); box-shadow: inset 0 0 0 1px rgba(0,150,214,0.45); }
 .settings .pbtn { border: 1px solid var(--pn-stroke2); background: var(--pn-card); border-radius: 7px; padding: 4px 10px; font: inherit; font-weight: 500; color: var(--pn-text); cursor: pointer; text-decoration: none; white-space: nowrap; flex: none; }
 .settings .btns { display: flex; gap: 8px; flex: none; }
 .settings .preview { display: flex; flex-direction: column; align-items: center; gap: 10px; margin-bottom: 18px; }
@@ -305,11 +307,11 @@ html.desk .win.settings > .tb .ttl { color: var(--pn-text2); }
 .settings .list + .list { margin-top: 8px; }
 .settings .mets { padding-left: 40px; }
 .settings .mets.off { opacity: 0.45; pointer-events: none; }
-.settings .hint a { color: var(--pn-accent-text, #1a9bd7); text-decoration: none; font-weight: 500; }
+.settings .hint a { color: var(--pn-accent-text, #0096d6); text-decoration: none; font-weight: 500; }
 .settings .item .grip { width: 28px; height: 30px; display: grid; place-items: center; }
 .settings .item .grip svg { width: 14px; height: 14px; stroke: var(--pn-text3); stroke-width: 2; stroke-linecap: round; }
 .settings .item.flash { animation: flash 1.2s ease; }
-@keyframes flash { 0%, 60% { background: rgba(26,155,215,0.16); } 100% { background: transparent; } }
+@keyframes flash { 0%, 60% { background: rgba(0,150,214,0.16); } 100% { background: transparent; } }
 .settings .empty { color: var(--pn-text3); font-size: 11px; text-align: center; min-height: 36px; display: grid; place-items: center; }
 .settings .detail { margin: 0 0 8px 46px; padding: 6px 12px; background: var(--pn-soft); border-radius: 8px; }
 .settings .note { margin: 4px 0 6px; color: var(--pn-text3); font-size: 11px; line-height: 1.6; }
@@ -320,7 +322,7 @@ html.desk .win.settings > .tb .ttl { color: var(--pn-text2); }
 .settings .mode { flex: 1; text-align: center; border-radius: 8px; background: var(--pn-bg); padding: 8px 2px; font-size: 11px; }
 .settings .mode b { display: block; font-weight: 600; font-size: 12px; }
 .settings .mode small { color: var(--pn-text3); }
-.settings .mode.sel { background: var(--pn-sel); box-shadow: inset 0 0 0 1px rgba(26,155,215,0.45); color: var(--pn-accent-text); }
+.settings .mode.sel { background: var(--pn-sel); box-shadow: inset 0 0 0 1px rgba(0,150,214,0.45); color: var(--pn-accent-text); }
 .settings .about { display: flex; align-items: center; gap: 16px; margin-bottom: 18px; }
 .settings .about img { width: 72px; height: 72px; }
 .settings .about b { font-size: 22px; font-weight: 700; }
@@ -332,7 +334,7 @@ html.desk .win.settings > .tb .ttl { color: var(--pn-text2); }
 .item.ghost .tile { display: grid; place-items: center; flex: none; } .item.ghost .tile svg { width: 54%; height: 54%; }
 .item.ghost .chev { width: 12px; visibility: hidden; } .item.ghost .nm { flex: 1; }
 .item.ghost .grip svg { width: 14px; height: 14px; stroke: var(--pn-text3); stroke-width: 2; }
-.dropline { position: fixed; z-index: 99991; height: 3px; border-radius: 2px; background: #1a9bd7; box-shadow: 0 0 6px rgba(26,155,215,0.6); pointer-events: none; }
+.dropline { position: fixed; z-index: 99991; height: 3px; border-radius: 2px; background: #0096d6; box-shadow: 0 0 6px rgba(0,150,214,0.6); pointer-events: none; }
 /* 面板标题栏右侧两个按钮挨着 */
 .ph .gearbtn + .gearbtn { margin-left: 0; }
 .ph .toggle + .gearbtn { margin-left: 8px; }
@@ -406,8 +408,6 @@ html.desk .win.settings > .tb .ttl { color: var(--pn-text2); }
   background: rgba(246, 246, 250, 0.94); box-shadow: 0 12px 34px rgba(0,0,0,0.3), 0 0 0 0.5px rgba(0,0,0,0.2); }
 .ctxmenu.flip .sub { left: auto; right: 100%; }
 .ctxmenu .has-sub:hover .sub { display: block; }
-html.pn-dark .ctxmenu { background: rgba(40, 40, 44, 0.86); box-shadow: 0 12px 34px rgba(0,0,0,0.45), 0 0 0 0.5px rgba(255,255,255,0.15); }
-html.pn-dark .ctxmenu .sub { background: rgba(40, 40, 44, 0.94); box-shadow: 0 12px 34px rgba(0,0,0,0.45), 0 0 0 0.5px rgba(255,255,255,0.15); }
 .ctxmenu i { width: 18px; font-style: normal; text-align: center; }
 .ctxmenu kbd { margin-left: auto; font: inherit; opacity: 0.55; }
 .ctxmenu hr { border: 0; height: 0.5px; background: rgba(0,0,0,0.15); margin: 4px 8px; }
@@ -415,22 +415,12 @@ html.pn-dark .ctxmenu .sub { background: rgba(40, 40, 44, 0.94); box-shadow: 0 1
   background: rgba(30,30,34,0.86); backdrop-filter: blur(20px); opacity: 0; transition: opacity .2s, transform .2s; pointer-events: none; }
 .toast.show { opacity: 1; transform: translate(-50%, 0); }
 
-/* ---------- 主题（设置 › 通用 › 主题：面板和窗口） ---------- */
+/* ---------- 面板和窗口的颜色（统一浅色；主题色 #0096d6，和应用图标底色一致（取自背景渐变）） ---------- */
 :root { --pn-bg: #f2f2f5; --pn-card: #fff; --pn-text: #1d1d1f; --pn-text2: #55555b; --pn-text3: #6e6e73; --pn-inset: #e4e4ea; --pn-stroke: rgba(0,0,0,0.08); --pn-stroke2: rgba(0,0,0,0.12);
-  --pn-sep: rgba(0,0,0,0.1); --pn-accent-text: #00669e; --pn-accent: #1a9bd7; --pn-sel: rgba(26,155,215,0.18); --pn-glass: rgba(242,242,246,0.86); --pn-soft: rgba(29,29,31,0.04);
+  --pn-sep: rgba(0,0,0,0.1); --pn-accent-text: #006e9e; --pn-accent: #0096d6; --pn-sel: rgba(0,150,214,0.16); --pn-glass: rgba(242,242,246,0.86); --pn-soft: rgba(29,29,31,0.04);
   --pn-side: rgba(228,228,234,0.5); --pn-hover: rgba(0,0,0,0.05);
   --pn-cool: #1b8a3e; --pn-warm: #a65c00; --pn-hot: #c4000e; }
-html.pn-dark { --pn-bg: #0f0f10; --pn-card: #1c1c1e; --pn-text: #f5f5f7; --pn-text2: #a1a1a6; --pn-text3: #8a8a90; --pn-inset: #09090a; --pn-stroke: rgba(255,255,255,0.07); --pn-stroke2: rgba(255,255,255,0.12);
-  --pn-sep: rgba(255,255,255,0.1); --pn-accent-text: #46c8ff; --pn-accent: #46c8ff; --pn-sel: rgba(70,200,255,0.18); --pn-glass: rgba(40,40,44,0.86); --pn-soft: rgba(255,255,255,0.05);
-  --pn-side: rgba(20,20,22,0.5); --pn-hover: rgba(255,255,255,0.06);
-  --pn-cool: #30d158; --pn-warm: #ff9f0a; --pn-hot: #ff453a; }
-/* 关于、常见问题、功能这些窗口也跟着主题走 */
-html.desk.pn-dark { --bg: #0f1016; --card: #181a22; --text: #eceef3; --text2: #a7abb7; --text3: #737887; --line: rgba(255,255,255,0.1); --accent-text: #8fa7ff; --soft: #1d1f28; --cta: #2fa463; }
 html.desk.pn-light { --bg: #fbfaf7; --card: #ffffff; --text: #16171d; --text2: #565a66; --text3: #8a8e99; --line: rgba(20,22,40,0.1); --accent-text: #2a4bd7; --soft: #f1efe9; --cta: #1f8a4c; }
-html.pn-dark .ctxmenu > div.dis { color: var(--pn-text3); }
-html.pn-dark .ctxmenu hr, html.pn-dark .mmenu .drop hr { background: rgba(255,255,255,0.15); }
-html.desk.pn-dark .mmenu .drop { background: var(--pn-glass); }
-html.desk.pn-dark .mmenu .drop a { color: var(--pn-text); }
 
 /* 设置里新增的部件：下拉框、提醒规则、分辨率切换确认；面板里的外接磁盘、温度分组 */
 .settings .sel { font: inherit; font-size: 12px; color: var(--pn-text); background: var(--pn-card); border: 1px solid var(--pn-stroke2); border-radius: 6px; padding: 3px 6px; }
@@ -445,7 +435,11 @@ html.desk.pn-dark .mmenu .drop a { color: var(--pn-text); }
 .panel .vol-row button { border: 1px solid var(--pn-stroke2); background: var(--pn-card); color: var(--pn-text); border-radius: 6px; padding: 3px 10px; font: inherit; cursor: pointer; }
 .panel .rows.grp { margin-bottom: 8px; }
 .panel .rows .ok { color: #1b8a3e; }
-html.pn-dark .panel .rows .ok { color: #30d158; }
 .island.float { cursor: default; }
 
 .settings .hint { margin: -10px 0 18px; color: var(--pn-text3); font-size: 11px; }
+
+.settings .sg button.dis { opacity: 0.4; cursor: default; }
+.settings .item .nm .chev { font-style: normal; color: var(--pn-text3); margin-left: 6px; display: inline-block; transition: transform .18s; }
+.settings .item .nm .chev.open { transform: rotate(90deg); }
+.settings .item .nm[data-mets] { cursor: pointer; }

@@ -803,7 +803,7 @@ final class SoundController: NSObject, NSPopoverDelegate {
             bluetoothPopover.delegate = self
         }
         controlsWillShow()
-        bluetoothPopover.appearance = AppearanceSetting.current.nsAppearance
+        bluetoothPopover.appearance = NSAppearance(named: .aqua)   // 面板统一浅色
         bluetoothPopover.show(relativeTo: anchor, of: button, preferredEdge: .minY)
         onBluetoothPanel(true)
         bluetoothClickMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in

@@ -13,11 +13,10 @@ final class SmoothScrollController: ObservableObject {
 
         var description: String {
             switch self {
-            case .off: return "让有刻度的鼠标滚轮像触控板一样顺滑"
+            case .off, .active: return ""   // 正常时设置里不显示说明
             case .permissionRequired: return "需要辅助功能权限"
             case .pausedForOther: return "另一个平滑滚动工具正在运行，退出它后自动启用"
             case .unavailable: return "未能开始，请重新检查辅助功能权限"
-            case .active: return "已启用，触控板不受影响"
             }
         }
     }

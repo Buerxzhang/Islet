@@ -231,7 +231,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             anchor.onDrag = { [weak self] point, finished in self?.dragIsland(to: point, finished: finished) }
             panel.contentView = anchor
             islandView.frame = anchor.bounds
+            // 玻璃样式：玻璃垫在胶囊下面，形状由胶囊每次绘制时报告
+            let glass = GlassBackdrop(frame: anchor.bounds)
+            glass.autoresizingMask = [.width, .height]
+            anchor.addSubview(glass)
             anchor.addSubview(islandView)
+            islandView.onCapsules = { [weak glass] rects in glass?.update(rects) }
             floatingPanel = panel
             item.isVisible = false
         }
@@ -468,8 +473,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private var snapshotInProgress = false
     private var cachedRankings: [Metric: [RankedApp]] = [:]  // 最近一次算出的排行，点开时先显示
 
-    /// 离屏渲染走查：--render <目标> <输出.png> [light|dark] [expanded]，不创建菜单栏图标。
-    var renderRequest: (target: String, output: String, dark: Bool, expanded: Bool)?
+    /// 离屏渲染走查：--render <目标> <输出.png> [expanded]，不创建菜单栏图标（面板和设置统一浅色）。
+    var renderRequest: (target: String, output: String, expanded: Bool)?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         if let request = renderRequest {
@@ -496,7 +501,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         popover.behavior = .transient
         popover.animates = false
         popover.delegate = self
-        popover.appearance = AppearanceSetting.current.nsAppearance
+        popover.appearance = NSAppearance(named: .aqua)   // 面板统一浅色
         wirePanel()
         wireSettings()
         FanHelperClient.shared.resume()
@@ -574,6 +579,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         }
         let controller = SpectrumController.shared
         view.backdrop = controller.islandBackdrop
+        view.glass = Self.floatsIsland && SpectrumLook.current.backdrop == .glass   // 玻璃只在悬浮时；在菜单栏里按黑色画
         if let bars = controller.hostedBars {
             let barsWidth = bars.preferredWidth
             if view.audio?.view !== bars || view.audio?.width != barsWidth { view.audio = (bars, barsWidth) }
@@ -651,7 +657,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
 
     // MARK: - 离屏渲染（设计走查）
 
-    private func runRender(_ request: (target: String, output: String, dark: Bool, expanded: Bool)) {
+    private func runRender(_ request: (target: String, output: String, expanded: Bool)) {
         let metric = Metric.allCases.first { "\($0)" == request.target }
         takeSnapshots()  // 先取快照（作为排行的对比基线），再标记正在看的面板
         shownMetric = metric ?? .fan
@@ -739,8 +745,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         }
     }
 
-    private func writeRender(_ request: (target: String, output: String, dark: Bool, expanded: Bool)) {
-        let scheme: ColorScheme = request.dark ? .dark : .light
+    private func writeRender(_ request: (target: String, output: String, expanded: Bool)) {
         let view: AnyView
         switch request.target {
         case "settings":
@@ -811,7 +816,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             view = AnyView(PanelView(model: panel))
         }
         MainActor.assumeIsolated {
-            let renderer = ImageRenderer(content: view.environment(\.colorScheme, scheme))
+            let renderer = ImageRenderer(content: view.environment(\.colorScheme, .light))
             renderer.scale = 2
             guard let image = renderer.cgImage else { print("渲染失败"); exit(1) }
             let bitmap = NSBitmapImageRep(cgImage: image)
@@ -955,10 +960,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             defaults.synchronize()
             SettingsTransfer.relaunch()
         }
-        settingsModel.onAppearance = { [weak self] in
-            self?.popover.appearance = AppearanceSetting.current.nsAppearance
-            self?.windows.applyAppearance()
-        }
         settingsModel.onInstallFan = { [weak self] in
             _ = self?.ensureFanHelper(title: "安装风扇控制组件")
             self?.settingsModel.refresh()
@@ -1033,6 +1034,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         let floating = NSMenuItem(title: Self.floatsIsland ? "在菜单栏显示" : "悬浮显示", action: #selector(menuToggleFloating), keyEquivalent: "")
         floating.target = self
         menu.addItem(floating)
+        // 悬浮时：自由拖动开着给“居中显示”（回到刘海 / 菜单栏正下方），关着给“自由拖动”
+        if Self.floatsIsland {
+            let free = NSMenuItem(title: Self.freeFloatingIsland ? "居中显示" : "自由拖动", action: #selector(menuToggleFreeFloating), keyEquivalent: "")
+            free.target = self
+            menu.addItem(free)
+        }
         // 应用本身：设置、关于（打开窗口的项带“…”）
         menu.addItem(.separator())
         let settings = NSMenuItem(title: "设置…", action: #selector(menuOpenSettings), keyEquivalent: ",")
@@ -1099,6 +1106,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     @objc private func menuOpenSettings() { openSettings() }
     @objc private func menuOpenAbout() { openSettings(page: .about) }
     @objc private func menuToggleFloating() { setFloatingIsland(!Self.floatsIsland) }
+    @objc private func menuToggleFreeFloating() { setFreeFloatingIsland(!Self.freeFloatingIsland) }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         openSettings()
@@ -1179,7 +1187,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         panel.strategyError = nil
         panel.rows = []
         shownMetric = metric
-        popover.appearance = AppearanceSetting.current.nsAppearance
         if metric == .fan || metric == .temperature || metric == .gpu || metric == .power || metric == .fps {
             refresh()  // 这些面板的主数据卡需要温度 / 风扇读数，打开时先刷新一次
         }
@@ -2035,8 +2042,7 @@ if launchArguments.count >= 4, launchArguments[1] == "--fps-probe" {
     app.run()
 }
 if launchArguments.count >= 4, launchArguments[1] == "--render" {
-    delegate.renderRequest = (launchArguments[2], launchArguments[3],
-                              !launchArguments.contains("light"), launchArguments.contains("expanded"))
+    delegate.renderRequest = (launchArguments[2], launchArguments[3], launchArguments.contains("expanded"))
 }
 app.delegate = delegate
 app.setActivationPolicy(.accessory)

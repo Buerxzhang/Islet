@@ -216,9 +216,10 @@ struct SpectrumLook: Equatable {
         static var allCases: [Tint] { [.album, .icon, .white] }
     }
     enum Backdrop: Int, CaseIterable {
-        case gradient, black, album   // gradient 沿用原“无”的存储值
-        var label: String { ["渐变", "黑色", "专辑色"][rawValue] }
-        static var allCases: [Backdrop] { [.album, .gradient, .black] }  // 专辑色排第一
+        // 存储值沿用旧版（0 渐变、1 黑色、3 玻璃；2 是已去掉的“专辑色”，读到时按渐变）
+        case gradient = 0, black = 1, glass = 3
+        var label: String { [.gradient: "渐变", .black: "黑色", .glass: "玻璃"][self]! }
+        static var allCases: [Backdrop] { [.gradient, .black, .glass] }
     }
 
     enum Cover: Int, CaseIterable {
@@ -229,7 +230,7 @@ struct SpectrumLook: Equatable {
     var shape: Shape = .bars
     var cover: Cover = .circle
     var tint: Tint = .album
-    var backdrop: Backdrop = .album
+    var backdrop: Backdrop = .gradient
     var controls = true
     var spin = true
 
@@ -243,7 +244,7 @@ struct SpectrumLook: Equatable {
         }
         look.cover = .circle  // 封面固定为圆形（不再提供切换）
         look.tint = Tint(rawValue: defaults.integer(forKey: "spectrumTint")) ?? .album
-        if let raw = defaults.object(forKey: "spectrumBackdrop") as? Int { look.backdrop = Backdrop(rawValue: raw) ?? .album }
+        if let raw = defaults.object(forKey: "spectrumBackdrop") as? Int { look.backdrop = Backdrop(rawValue: raw) ?? .gradient }
         look.controls = defaults.object(forKey: "spectrumControls") as? Bool ?? true
         look.spin = defaults.object(forKey: "spectrumSpin") as? Bool ?? true
         return look
@@ -259,14 +260,18 @@ struct SpectrumLook: Equatable {
         defaults.set(spin, forKey: "spectrumSpin")
     }
 
-    /// 胶囊底色（从左到右的颜色）：专辑色整块压暗；渐变从专辑色过渡到黑色；没有封面颜色时都是黑色。
+    /// 没有播放音乐时渐变的起点：主题色（图标底色 #0096D6）的深色版，白字在上面清楚。
+    static let themeDark = NSColor(srgbRed: 0x00 / 255.0, green: 0x4B / 255.0, blue: 0x6B / 255.0, alpha: 0.97)
+
+    /// 胶囊底色（从左到右的颜色）。渐变：从左往右过渡到黑，起点在播放时是专辑色，没播放时是主题色的深色版；
+    /// 黑色：一直纯黑；玻璃只在悬浮时生效，在菜单栏里按默认的渐变画（再悬浮时自动回到玻璃）。
     /// 底色必须不透明：它同时挡住系统在菜单栏项下面画的按下 / 打开底色。
     func backdropColors(tint: NSColor?) -> [NSColor] {
         let black = NSColor(white: 0.06, alpha: 0.97)
-        guard let tint, backdrop != .black else { return [black] }
-        let album = NSColor(hue: tint.hueComponent, saturation: min(tint.saturationComponent, 0.75),
-                            brightness: backdrop == .gradient ? 0.3 : 0.2, alpha: 0.97)
-        return backdrop == .gradient ? [album, black] : [album]
+        guard backdrop != .black else { return [black] }   // 渐变，以及不悬浮时的玻璃
+        guard let tint else { return [Self.themeDark, black] }
+        let album = NSColor(hue: tint.hueComponent, saturation: min(tint.saturationComponent, 0.8), brightness: 0.5, alpha: 0.97)
+        return [album, black]
     }
 
     /// 竖条颜色；album 为专辑主色，没有时回落到 base（白 / 黑）。lighten 时把专辑色调浅（用在深色底上）。
@@ -1087,7 +1092,7 @@ final class SpectrumController: NSObject, NSPopoverDelegate {
         }
         panel.look = SpectrumLook.current
         panel.error = analyzer.error
-        popover.appearance = AppearanceSetting.current.nsAppearance
+        popover.appearance = NSAppearance(named: .aqua)   // 面板统一浅色
         popover.show(relativeTo: anchor, of: sender, preferredEdge: .minY)
         schedule(fast: true)  // 面板里的大号频谱需要实时刷新
         SoundController.shared.controlsWillShow()

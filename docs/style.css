@@ -5,25 +5,11 @@
   --text2: #565a66;
   --text3: #8a8e99;
   --line: rgba(20, 22, 40, 0.1);
-  --accent: #0c1033;
+  --accent: #0096d6;
   --accent-text: #2a4bd7;
   --cta: #1f8a4c;
   --cta-text: #ffffff;
   --soft: #f1efe9;
-}
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #0f1016;
-    --card: #181a22;
-    --text: #eceef3;
-    --text2: #a7abb7;
-    --text3: #737887;
-    --line: rgba(255, 255, 255, 0.1);
-    --accent: #f4eee3;
-    --accent-text: #8fa7ff;
-    --cta: #2fa463;
-    --soft: #1d1f28;
-  }
 }
 * { box-sizing: border-box; }
 html { -webkit-text-size-adjust: 100%; }

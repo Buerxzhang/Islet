@@ -13,7 +13,6 @@ final class WindowManager {
     func show<Content: View>(_ id: String, title: String, size: NSSize, resizable: Bool = false,
                              onClose: (() -> Void)? = nil, @ViewBuilder content: () -> Content) {
         if let window = windows[id] {
-            window.appearance = AppearanceSetting.current.nsAppearance
             bringToFront(window)   // 宽度不在这里改：设置窗口由预览里的岛决定宽度，两处都改会来回闪
             return
         }
@@ -29,7 +28,7 @@ final class WindowManager {
         window.isExcludedFromWindowsMenu = true
         window.contentViewController = NSHostingController(rootView: content())
         window.setContentSize(size)
-        window.appearance = AppearanceSetting.current.nsAppearance
+        window.appearance = NSAppearance(named: .aqua)   // 统一浅色
         // 普通层级：切到别的程序时正常退到后面，再从灵动岛打开设置即可前置
         window.level = .normal
         window.collectionBehavior = [.moveToActiveSpace, .fullScreenAuxiliary]
@@ -60,17 +59,8 @@ final class WindowManager {
         window.orderFrontRegardless()  // 即使系统没批准激活，也先显示在最前
     }
 
-    /// 与 Palette.panel 一致的窗口底色（随明暗切换）。
-    private static let panelColor = NSColor(name: nil) { appearance in
-        appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-            ? NSColor(srgbRed: 0x1C / 255, green: 0x1C / 255, blue: 0x1E / 255, alpha: 1)
-            : NSColor(srgbRed: 0xF2 / 255, green: 0xF2 / 255, blue: 0xF5 / 255, alpha: 1)
-    }
-
-    /// 外观设置变化后更新已打开的窗口。
-    func applyAppearance() {
-        for window in windows.values { window.appearance = AppearanceSetting.current.nsAppearance }
-    }
+    /// 与 Palette.panel 一致的窗口底色。
+    private static let panelColor = NSColor(srgbRed: 0xF2 / 255, green: 0xF2 / 255, blue: 0xF5 / 255, alpha: 1)
 
     func close(_ id: String) { windows[id]?.close() }
 
@@ -130,7 +120,6 @@ final class SettingsModel: ObservableObject {
     @Published var diagnosticsNote: String?
 
     var onChange: (SpeedSetting) -> Void = { _ in }
-    var onAppearance: () -> Void = {}
     var onMetricOrder: () -> Void = {}
     var onFullScreenFloatingIsland: (Bool) -> Void = { _ in }
     var onFreeFloatingIsland: (Bool) -> Void = { _ in }
@@ -251,14 +240,6 @@ final class SettingsModel: ObservableObject {
     func select(_ setting: SpeedSetting, _ index: Int) {
         setting.select(index)
         onChange(setting)
-        revision += 1
-    }
-
-    var appearance: AppearanceSetting { AppearanceSetting.current }
-
-    func setAppearance(_ value: AppearanceSetting) {
-        AppearanceSetting.select(value)
-        onAppearance()
         revision += 1
     }
 
@@ -397,15 +378,9 @@ struct SettingsView: View {
             row(p, "登录时启动", nil, icon: "power", tint: Color(hex: 0x30D158)) {
                 Toggle2(isOn: model.launchAtLogin, onChange: model.setLaunchAtLogin)
             }
-            divider(p)
-            row(p, "主题", "面板和窗口", icon: "circle.lefthalf.filled", tint: Color(hex: 0x5E5CE6)) {
-                Segmented(options: AppearanceSetting.allCases.map { ($0, $0.label) },
-                          selection: model.appearance, onSelect: model.setAppearance)
-                    .frame(width: 200)
-            }
         }
         section(p, "提醒") {
-            row(p, "提醒规则", "指标持续过高时发通知，回落后才会再次提醒", icon: "bell.badge.fill", tint: Color(hex: 0xFF453A)) {
+            row(p, "提醒规则", nil, icon: "bell.badge.fill", tint: Color(hex: 0xFF453A)) {
                 PlainButton(title: "添加") {
                     model.alertRules.append(AlertRule(kind: .temperature, threshold: AlertRule.Kind.temperature.defaultThreshold, minutes: 1))
                     AlertCenter.rules = model.alertRules
@@ -433,7 +408,7 @@ struct SettingsView: View {
             }
         }
         section(p, "重置") {
-            row(p, "恢复默认设置", "重置 islet 的应用偏好", icon: "arrow.uturn.backward.circle.fill", tint: Color(hex: 0x8E8E93)) {
+            row(p, "恢复默认设置", nil, icon: "arrow.uturn.backward.circle.fill", tint: Color(hex: 0x8E8E93)) {
                 PlainButton(title: "恢复默认") {
                     guard confirmAlert("恢复 islet 的默认设置？",
                                        "islet 会重新启动。流量统计、macOS 的显示器配置和系统权限会保留。") else { return }
@@ -464,27 +439,27 @@ struct SettingsView: View {
     /// 灵动岛：位置、底色，以及岛上显示的内容（顺序与岛上一致）。各模块自己的设置在左侧单独的页里。
     @ViewBuilder private func menuBarPage(_ p: Palette) -> some View {
         section(p, "胶囊") {
-            row(p, "悬浮显示", "将胶囊居中放在刘海或菜单栏下方；刘海屏默认开启", icon: "rectangle.on.rectangle", tint: Color(hex: 0x0A84FF)) {
+            row(p, "悬浮显示", nil, icon: "rectangle.on.rectangle", tint: Color(hex: 0x0A84FF)) {
                 Toggle2(isOn: AppDelegate.floatsIsland, onChange: model.onFloatingIsland)
             }
             divider(p)
             if AppDelegate.floatsIsland {
-                row(p, "全屏时保持悬浮", "在支持的全屏视频和游戏上显示胶囊", icon: "arrow.up.left.and.arrow.down.right", tint: Color(hex: 0x0A84FF)) {
+                row(p, "全屏时保持悬浮", nil, icon: "arrow.up.left.and.arrow.down.right", tint: Color(hex: 0x0A84FF)) {
                     Toggle2(isOn: AppDelegate.fullScreenFloatingIsland, onChange: model.onFullScreenFloatingIsland)
                 }
                 divider(p)
-                row(p, "自由拖动", "按住胶囊拖到想放的位置", icon: "hand.draw", tint: Color(hex: 0x0A84FF)) {
+                row(p, "自由拖动", nil, icon: "hand.draw", tint: Color(hex: 0x0A84FF)) {
                     Toggle2(isOn: AppDelegate.freeFloatingIsland, onChange: model.onFreeFloatingIsland)
                 }
                 // 自由拖动时拖到哪块屏就在哪块屏；只有一块屏时不用选
                 if !AppDelegate.freeFloatingIsland, NSScreen.screens.count > 1 || AppDelegate.islandScreen != "main" {
                     divider(p)
-                    row(p, "显示屏幕", "连接多块显示器时，胶囊显示在哪块屏幕上", icon: "display.2", tint: Color(hex: 0x0A84FF)) {
+                    row(p, "显示屏幕", nil, icon: "display.2", tint: Color(hex: 0x0A84FF)) {
                         islandScreenMenu()
                     }
                 }
             } else {
-                row(p, "始终在菜单栏最左侧", "关闭后可按住 ⌘ 拖到任意位置", icon: "pin.fill", tint: Color(hex: 0x30D158)) {
+                row(p, "始终在菜单栏最左侧", "关闭后按住 ⌘ 拖动", icon: "pin.fill", tint: Color(hex: 0x30D158)) {
                     Toggle2(isOn: AppDelegate.keepsLeftmost) { on in
                         UserDefaults.standard.set(on, forKey: "keepLeftmost")
                         if on { model.onKeepLeftmost() }
@@ -493,16 +468,27 @@ struct SettingsView: View {
                 }
             }
             divider(p)
-            row(p, "胶囊形态", "分体：音乐、系统指标、蓝牙电量各成一个小胶囊；合并：连成一个", icon: "square.split.2x1", tint: Color(hex: 0xBF5AF2)) {
+            row(p, "胶囊形态", nil, icon: "square.split.2x1", tint: Color(hex: 0xBF5AF2)) {
                 Segmented(options: [(true, "分体"), (false, "合并")], selection: MetricsIslandView.splits, onSelect: model.setSplit)
                     .frame(width: 140)
             }
             divider(p)
-            SpectrumLookEditor(look: SpectrumLook.current, part: .backdrop) { look in
-                SpectrumController.shared.setLook(look)
-                model.refresh()
+            // 样式：胶囊底色；玻璃只在悬浮时可用（菜单栏里会透出系统的按下高亮），不悬浮时置灰、按黑色画
+            row(p, "样式", AppDelegate.floatsIsland ? nil : "「玻璃」仅在悬浮模式生效",
+                icon: "paintpalette", tint: Color(hex: 0xFF9F0A)) {
+                // 不悬浮时选着“玻璃”就显示成实际在用的“渐变”；保存的仍是玻璃，再悬浮时自动回到玻璃
+                let stored = SpectrumLook.current.backdrop
+                Segmented(options: SpectrumLook.Backdrop.allCases.map { ($0, $0.label) },
+                          selection: !AppDelegate.floatsIsland && stored == .glass ? .gradient : stored,
+                          disabled: AppDelegate.floatsIsland ? [] : [.glass]) { value in
+                    var look = SpectrumLook.current
+                    look.backdrop = value
+                    SpectrumController.shared.setLook(look)
+                    model.onMetricOrder()   // 重画胶囊（玻璃开关）
+                    model.refresh()
+                }
+                .frame(width: 200)
             }
-            .padding(.vertical, 4)
         }
         itemList(p)
     }
@@ -517,15 +503,14 @@ struct SettingsView: View {
             HStack {
                 Text("显示内容").font(Typo.bodyMedium).foregroundStyle(p.text2)
                 Spacer()
-                Text(split ? "每张卡片是一个小胶囊，按住拖动调整顺序" : "关掉开关即隐藏，按住拖动调整顺序")
-                    .font(Typo.settingsCaption).foregroundStyle(p.text3)
             }
             if split {
                 ForEach(model.moduleOrder, id: \.self) { id in
                     Card(padding: 12) {
                         VStack(alignment: .leading, spacing: 0) {
                             itemRow(p, id).gesture(dragGesture(id))
-                            if id == "metrics" { metricRows(p) }
+                            // 系统指标默认收起，点标题行展开；展开状态在关掉设置窗口时清空
+                            if id == "metrics", model.expanded.contains("metrics") { metricRows(p) }
                         }
                     }
                     .background(frameReader(id))
@@ -557,7 +542,7 @@ struct SettingsView: View {
             }
             if !Metric.allCases.contains(where: \.isShown) {
                 // 音乐、蓝牙只在播放 / 连接时出现，没有常驻指标时胶囊可能整个消失
-                Text("没有常驻指标时胶囊可能会消失，再次打开 islet 即可回到设置")
+                Text("指标全关时胶囊可能消失")
                     .font(Typo.settingsCaption).foregroundStyle(p.text3)
             }
             LinkButton(title: "恢复默认显示和顺序", muted: true) {
@@ -640,9 +625,9 @@ struct SettingsView: View {
 
     private func itemInfo(_ id: String) -> (title: String, subtitle: String?, icon: String, tint: Color) {
         switch id {
-        case "music": return ("音乐", "播放时展开封面和频谱", "waveform", Color(hex: 0xFF375F))
-        case "metrics": return ("系统指标", "CPU、内存、温度、网速等，在下面逐项选择", "gauge.with.dots.needle.33percent", Color(hex: 0x30D158))
-        case "bluetooth": return ("蓝牙电量", "耳机、键盘、鼠标的电量圆环", "dot.radiowaves.left.and.right", Color(hex: 0x0A84FF))
+        case "music": return ("音乐", nil, "waveform", Color(hex: 0xFF375F))
+        case "metrics": return ("系统指标", nil, "gauge.with.dots.needle.33percent", Color(hex: 0x30D158))
+        case "bluetooth": return ("蓝牙电量", nil, "dot.radiowaves.left.and.right", Color(hex: 0x0A84FF))
         case "network": return ("网速", nil, "arrow.up.arrow.down", Color(hex: 0x0A84FF))
         default:
             let setting = SettingsModel.metricSetting(id)
@@ -657,12 +642,23 @@ struct SettingsView: View {
         let info = itemInfo(id)
         let module = !compact
         let on = model.isVisible(id)
+        // 分体时“系统指标”卡片可以展开 / 收起各项指标；收起时副标题写正在显示几项
+        let expandable = module && id == "metrics"
+        let open = model.expanded.contains("metrics")
+        let shownCount = Metric.allCases.filter { model.isVisible("\($0)") }.count
         return HStack(spacing: 10) {
             IconTile(symbol: info.icon, tint: info.tint, size: module ? 30 : 22)
                 .opacity(on ? 1 : 0.45)
             VStack(alignment: .leading, spacing: 2) {
-                Text(info.title).font(Typo.settingsBody).foregroundStyle(on ? p.text : p.text3)
-                if module, let subtitle = info.subtitle { Text(subtitle).font(Typo.settingsCaption).foregroundStyle(p.text3) }
+                HStack(spacing: 6) {
+                    Text(info.title).font(Typo.settingsBody).foregroundStyle(on ? p.text : p.text3)
+                    if expandable {
+                        Image(systemName: "chevron.right").font(.system(size: 10, weight: .bold)).foregroundStyle(p.text3)
+                            .rotationEffect(.degrees(open ? 90 : 0))
+                    }
+                }
+                if expandable, !open { Text("显示 \(shownCount) 项").font(Typo.settingsCaption).foregroundStyle(p.text3) }
+                else if module, let subtitle = info.subtitle { Text(subtitle).font(Typo.settingsCaption).foregroundStyle(p.text3) }
             }
             Spacer(minLength: 8)
             Toggle2(isOn: on) { value in
@@ -675,6 +671,12 @@ struct SettingsView: View {
         }
         .padding(.vertical, module ? 6 : 3)
         .contentShape(Rectangle())
+        .onTapGesture {
+            guard expandable else { return }
+            withAnimation(.easeInOut(duration: 0.18)) {
+                if open { model.expanded.remove("metrics") } else { model.expanded.insert("metrics") }
+            }
+        }
     }
 
     // MARK: 展开后的设置
@@ -698,7 +700,7 @@ struct SettingsView: View {
 
     private func musicDetail(_ p: Palette) -> some View {
         detail(p) {
-            detailRow(p, "其他程序的声音", "游戏、剪辑软件等也显示") {
+            detailRow(p, "其他程序的声音") {
                 Toggle2(isOn: SpectrumController.showsOtherSounds) { on in
                     UserDefaults.standard.set(on, forKey: "spectrumOtherSounds")
                     SpectrumController.shared.otherSoundsChanged()
@@ -719,14 +721,14 @@ struct SettingsView: View {
                 model.refresh()
             }
             .padding(.vertical, 6)
-            detailRow(p, "灵敏度", "安静的歌调高") {
+            detailRow(p, "灵敏度") {
                 Segmented(options: SpectrumAnalyzer.sensitivityChoices, selection: SpectrumAnalyzer.sensitivity) { value in
                     SpectrumAnalyzer.sensitivity = value
                     model.refresh()
                 }
                 .frame(width: 190)
             }
-            detailRow(p, "系统录音权限", "只读取播放的声音，不录麦克风") {
+            detailRow(p, "系统录音权限", "不录麦克风") {
                 PlainButton(title: "打开权限设置") {
                     if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_AudioCapture") {
                         NSWorkspace.shared.open(url)
@@ -764,7 +766,7 @@ struct SettingsView: View {
                 }
                 .frame(width: 90)
             }
-            detailRow(p, "清零流量统计", "今日和本月重新计") {
+            detailRow(p, "清零流量统计") {
                 PlainButton(title: "清零") {
                     guard confirmAlert("清零流量统计？", "今日和本月的上传、下载记录会归零。") else { return }
                     TrafficLedger.shared.reset()
@@ -778,8 +780,7 @@ struct SettingsView: View {
     private func fpsDetail(_ p: Palette) -> some View {
         let authorized = CGPreflightScreenCaptureAccess()
         return detail(p) {
-            detailRow(p, "测量方式", "统计前台窗口所在屏幕每秒画面变化的次数（islet 自己不算）；画面静止时数字会变低，最高不超过屏幕刷新率") { EmptyView() }
-            detailRow(p, "屏幕录制权限", authorized ? "已授权。只数画面变化，不保存、不上传画面" : "未授权：在系统设置里打开 islet 后重新启动 islet") {
+            detailRow(p, "屏幕录制权限", authorized ? nil : "授权后需重启 islet") {
                 PlainButton(title: authorized ? "已授权" : "打开权限设置") {
                     if !authorized { CGRequestScreenCaptureAccess() }
                     if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture") {
@@ -793,7 +794,7 @@ struct SettingsView: View {
     /// 温度：单位（影响所有温度显示，所以放在“温度”这一项，不藏在风扇里）。
     private func temperatureDetail(_ p: Palette) -> some View {
         detail(p) {
-            detailRow(p, "温度单位", "岛上、面板和提醒里的温度") {
+            detailRow(p, "温度单位") {
                 Segmented(options: [(false, "℃"), (true, "℉")], selection: Units.fahrenheit) { value in
                     UserDefaults.standard.set(value, forKey: "unitFahrenheit")
                     model.onUnits()
@@ -845,7 +846,7 @@ struct SettingsView: View {
                 }
             }
             divider(p)
-            row(p, "退出时交还系统", "退出、崩溃或睡眠时自动交还", icon: "arrow.uturn.backward", tint: Color(hex: 0x30D158)) {
+            row(p, "退出时交还系统", nil, icon: "arrow.uturn.backward", tint: Color(hex: 0x30D158)) {
                 HStack(spacing: 4) {
                     Image(systemName: "lock.fill").font(.system(size: 10))
                     Text("始终开启").font(Typo.settingsCaption)
@@ -853,7 +854,7 @@ struct SettingsView: View {
                 .foregroundStyle(p.text3)
             }
         
-            Text("通过未公开的 SMC 接口调速，系统升级后可能失效。转速有安全下限、绝不停转，但仍请自行承担风险；异常时切回“自动”或卸载组件。")
+            Text("通过未公开接口调速，系统升级后可能失效")
                 .font(Typo.settingsCaption).foregroundStyle(p.text3)
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.vertical, 6)
@@ -863,7 +864,7 @@ struct SettingsView: View {
     private func bluetoothDetail(_ p: Palette) -> some View {
         let sound = SoundController.shared.panel
         return detail(p) {
-            detailRow(p, "低电量提醒", "电量低于下面的值时通知，标题带设备类型") {
+            detailRow(p, "低电量提醒") {
                 toggle("alertLowBattery", default: true) { _ in
                     AlertCenter.shared.prepare()
                     SoundController.shared.startBluetoothItem()   // 岛上不显示蓝牙时，提醒要靠它定时读电量
@@ -878,7 +879,7 @@ struct SettingsView: View {
                     .frame(width: 200)
                 }
                 detailRow(p, "提示音") { toggle("alertSound", default: true) }
-                detailRow(p, "测试", "用已连接的设备发一条示例通知") {
+                detailRow(p, "测试通知") {
                     PlainButton(title: "发送测试通知") {
                         let device = sound.allDevices.first { $0.connected && SoundController.batteryLevel($0.battery) != nil }
                         AlertCenter.shared.sendTest(device: device.map { ($0.name, $0.symbol, SoundController.batteryLevel($0.battery) ?? 20) })
@@ -900,7 +901,6 @@ struct SettingsView: View {
 
     private func bluetoothDevices(_ p: Palette, _ sound: SoundPanelModel) -> some View {
         detail(p) {
-            Text("取消勾选的设备不在岛上显示").font(Typo.settingsCaption).foregroundStyle(p.text3).padding(.vertical, 4)
             if sound.allDevices.isEmpty {
                 Text("正在读取设备…").font(Typo.settingsCaption).foregroundStyle(p.text3).padding(.vertical, 6)
             }
@@ -965,30 +965,31 @@ struct SettingsView: View {
 
     @ViewBuilder private func extensionsPage(_ p: Palette) -> some View {
         section(p, "鼠标滚动") {
-            row(p, "平滑滚动", smoothScroll.state.description, icon: "computermouse.fill", tint: Color(hex: 0x0A84FF)) {
+            // 只在异常时说明（需要权限、被其他工具占用等）
+            row(p, "平滑滚动", [.off, .active].contains(smoothScroll.state) ? nil : smoothScroll.state.description, icon: "computermouse.fill", tint: Color(hex: 0x0A84FF)) {
                 Toggle2(isOn: smoothScroll.enabled, onChange: smoothScroll.setEnabled)
             }
             if smoothScroll.state == .permissionRequired || smoothScroll.state == .unavailable {
                 divider(p)
-                row(p, "辅助功能权限", "用来接管鼠标滚轮，只改变滚动的节奏", icon: "hand.raised.fill", tint: Color(hex: 0x8E8E93)) {
+                row(p, "辅助功能权限", nil, icon: "hand.raised.fill", tint: Color(hex: 0x8E8E93)) {
                     PlainButton(title: "打开权限设置", action: smoothScroll.openPermissionSettings)
                 }
             }
             if smoothScroll.enabled {
                 divider(p)
-                row(p, "滚动距离", "滚轮每转一格移动多远", icon: "arrow.up.and.down", tint: Color(hex: 0x30D158)) {
+                row(p, "滚动距离", nil, icon: "arrow.up.and.down", tint: Color(hex: 0x30D158)) {
                     Segmented(options: SmoothScrollController.Distance.allCases.map { ($0, $0.label) },
                               selection: smoothScroll.options.distance, onSelect: smoothScroll.setDistance)
                         .frame(width: 150)
                 }
                 divider(p)
-                row(p, "平滑程度", "越高越柔和，停下得越慢", icon: "waveform.path", tint: Color(hex: 0xFF9F0A)) {
+                row(p, "平滑程度", nil, icon: "waveform.path", tint: Color(hex: 0xFF9F0A)) {
                     Segmented(options: SmoothScrollController.Smoothness.allCases.map { ($0, $0.label) },
                               selection: smoothScroll.options.smoothness, onSelect: smoothScroll.setSmoothness)
                         .frame(width: 150)
                 }
                 divider(p)
-                row(p, "反转滚动方向", "只影响鼠标滚轮，触控板不变", icon: "arrow.up.arrow.down", tint: Color(hex: 0x5E5CE6)) {
+                row(p, "反转滚动方向", "不影响触控板", icon: "arrow.up.arrow.down", tint: Color(hex: 0x5E5CE6)) {
                     Toggle2(isOn: smoothScroll.options.reverse, onChange: smoothScroll.setReverse)
                 }
             }
@@ -1173,17 +1174,15 @@ struct SettingsView: View {
                 }
             case .failed(let message):
                 HStack(spacing: 10) {
-                    Text("没能自动更新：\(message)").font(Typo.settingsCaption).foregroundStyle(Color(hex: 0xFF453A))
+                    Text("更新失败：\(message)").font(Typo.settingsCaption).foregroundStyle(Color(hex: 0xFF453A))
                         .fixedSize(horizontal: false, vertical: true)
                     Spacer(minLength: 8)
                     LinkButton(title: "打开下载页") { NSWorkspace.shared.open(release.url) }
                 }
             case .ready:
-                Text("已下载并核对完毕，点右上角的按钮重启 islet 即可完成更新，设置不会丢失")
-                    .font(Typo.settingsCaption).foregroundStyle(p.text3)
+                EmptyView()
             case .idle:
                 HStack {
-                    Text("先下载，下载完成后再由你决定何时重启").font(Typo.settingsCaption).foregroundStyle(p.text3)
                     Spacer(minLength: 8)
                     LinkButton(title: "跳过这个版本", muted: true) {
                         UserDefaults.standard.set(release.version, forKey: "skippedUpdateVersion")
@@ -1262,7 +1261,7 @@ struct SettingsView: View {
             }
             if case .available(let release) = model.update { updateDetail(p, release) }
             divider(p)
-            row(p, "自动检查更新", "每天一次，有新版本时打开这一页", icon: "bell.badge", tint: Color(hex: 0xFF9F0A)) {
+            row(p, "自动检查更新", nil, icon: "bell.badge", tint: Color(hex: 0xFF9F0A)) {
                 toggle("autoCheckUpdates", default: true)
             }
         }
@@ -1428,9 +1427,6 @@ struct CurveEditorView: View {
                         }
                     }
                 }
-                Text("拖动控制点改变温度到转速的映射；斜纹区域是安全下限，曲线拖不进去。")
-                    .font(Typo.settingsCaption).foregroundStyle(p.text3)
-                    .fixedSize(horizontal: false, vertical: true)
 
                 chart(p)
                     .frame(height: embedded ? 220 : 300)
@@ -1607,9 +1603,6 @@ struct RulesView: View {
             VStack(alignment: .leading, spacing: 14) {
                 VStack(alignment: .leading, spacing: 4) {
                     if !embedded { Text("规则").font(.system(size: 20, weight: .semibold)).foregroundStyle(p.text) }
-                    Text("规则命中时把风扇提到指定转速；多条同时命中取最高；都未命中时交给系统。")
-                        .font(Typo.settingsCaption).foregroundStyle(p.text3)
-                        .fixedSize(horizontal: false, vertical: true)
                 }
                 if flat || embedded { ruleList(p) } else { ScrollView { ruleList(p) } }
                 HStack(spacing: 8) {

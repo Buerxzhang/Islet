@@ -88,9 +88,9 @@
     range: "5 分", killed: new Set(), strategy: "自动", preset: "均衡", awake: "关闭", awakeUntil: 0, awakeScreen: false, quit: false,
   };
   // 设置窗口里的选项（演示用），改了实时反映到灵动岛
-  const SET = { page: "灵动岛", float: true, leftmost: true, bg: "专辑色", other: true, collapse: "10 秒",
+  const SET = { page: "灵动岛", metsOpen: false, float: true, leftmost: true, bg: "渐变", other: true, collapse: "10 秒",
     shape: "竖条", color: "专辑色", spin: true, buttons: true, sens: "标准", smooth: false, dist: "中", soft: "中",
-    hidpi: false, theme: "跟随系统", login: false, rate: "1 秒", autoUpdate: true,
+    hidpi: false, login: false, rate: "1 秒", autoUpdate: true,
     fanBasis: "平均温度", netMode: "自动", netUnit: "MB/s", btAlert: true, btLevel: "20%",
     fullFloat: false, freeDrag: false, reverse: false, rank: "8", tempUnit: "℃", monthStart: 1,
     // 提醒规则：和软件首次使用时一样，温度 ≥ 95° 持续 1 分钟（开）、CPU ≥ 90% 持续 3 分钟（关）
@@ -161,8 +161,11 @@
     const t = tracks[S.track];
     $(".island .cover").style.background = `linear-gradient(135deg, ${t.from}, ${t.via} 55%, ${t.to})`;
     $(".island .pp").innerHTML = S.playing ? ICON.pause : ICON.play;
-    const tint = `color-mix(in srgb, ${t.via} 45%, #000)`;
-    const bg = SET.bg === "黑色" ? "#000" : SET.bg === "专辑色" ? tint : `linear-gradient(90deg, color-mix(in srgb, ${t.via} 38%, #141416) 0%, #2a2a2e 100%)`;
+    // 底色（和软件一致）：渐变——从左往右过渡到黑，起点播放时是专辑色、没播放时是主题蓝 #0096d6 的深色版；黑色；玻璃只在悬浮时（菜单栏里按黑色）
+    const glass = SET.bg === "玻璃" && SET.float;
+    const bg = glass ? "rgba(0,0,0,0.42)" : SET.bg !== "黑色"   // 不悬浮时的玻璃按渐变画
+      ? `linear-gradient(90deg, ${S.playing ? `color-mix(in srgb, ${t.via} 70%, #000)` : "#004b6b"} 0%, #0f0f10 100%)` : "#000";
+    island.classList.toggle("glass", glass);
     island.style.setProperty("--ibg", bg);   // 分体时每个小胶囊用同一个底色
     island.style.background = SET.split ? "transparent" : bg;
     island.classList.toggle("float", SET.float);
@@ -361,28 +364,28 @@
   };
 
   const metricConf = {
-    cpu: { title: "CPU", tint: "#0a84ff", level: () => levelColor(S.cpu, 70, 90), icon: '<svg viewBox="0 0 24 24" fill="none" stroke="#1a9bd7" stroke-width="1.8"><rect x="6" y="6" width="12" height="12" rx="2"/><path d="M9 2v4M15 2v4M9 18v4M15 18v4M2 9h4M2 15h4M18 9h4M18 15h4"/></svg>',
+    cpu: { title: "CPU", tint: "#0a84ff", level: () => levelColor(S.cpu, 70, 90), icon: '<svg viewBox="0 0 24 24" fill="none" stroke="#0096d6" stroke-width="1.8"><rect x="6" y="6" width="12" height="12" rx="2"/><path d="M9 2v4M15 2v4M9 18v4M15 18v4M2 9h4M2 15h4M18 9h4M18 15h4"/></svg>',
       gauge: () => [S.cpu, Math.round(S.cpu), "% 占用"], kv: () => [["核心", "4 性能 + 6 能效"], ["温度", deg(S.temp + 4)], ["功耗", S.pwr.toFixed(1) + " W"]],
       hist: "cpu", peak: (m) => "峰值 " + Math.round(m) + "%", rank: "CPU 占用", share: [38, 12, 6.4, 4.1, 1.2, 0.8, 0.5, 0.3], fmt: (v) => v + "%" },
-    gpu: { title: "GPU", tint: "#5e5ce6", level: () => levelColor(S.gpu, 70, 90), icon: '<svg viewBox="0 0 24 24" fill="none" stroke="#1a9bd7" stroke-width="1.8"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="9" cy="12" r="3"/><path d="M15 10h4M15 14h4"/></svg>',
+    gpu: { title: "GPU", tint: "#5e5ce6", level: () => levelColor(S.gpu, 70, 90), icon: '<svg viewBox="0 0 24 24" fill="none" stroke="#0096d6" stroke-width="1.8"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="9" cy="12" r="3"/><path d="M15 10h4M15 14h4"/></svg>',
       gauge: () => [S.gpu, Math.round(S.gpu), "% 占用"], kv: () => [["核心", "16 核"], ["温度", deg(S.temp - 3)], ["功耗", (S.pwr * 0.3).toFixed(1) + " W"]],
       hist: "gpu", peak: (m) => "峰值 " + Math.round(m) + "%", rank: "GPU 占用", share: [21, 6.2, 2.4, 1.1, 0.3, 0.2, 0.1, 0.1], fmt: (v) => v + "%" },
-    mem: { title: "内存", tint: "#30d158", level: () => "var(--pn-cool)", icon: '<svg viewBox="0 0 24 24" fill="none" stroke="#1a9bd7" stroke-width="1.8"><rect x="3" y="7" width="18" height="10" rx="1.5"/><path d="M7 7v10M11 7v10M15 7v10M7 20v-3M17 20v-3"/></svg>',
+    mem: { title: "内存", tint: "#30d158", level: () => "var(--pn-cool)", icon: '<svg viewBox="0 0 24 24" fill="none" stroke="#0096d6" stroke-width="1.8"><rect x="3" y="7" width="18" height="10" rx="1.5"/><path d="M7 7v10M11 7v10M15 7v10M7 20v-3M17 20v-3"/></svg>',
       gauge: () => [S.mem / 16 * 100, S.mem.toFixed(1), "GB 已用"], kv: () => [["总量", "16 GB"], ["压力", "正常"], ["交换", "0.8 GB"]],
       hist: "mem", peak: (m) => "峰值 " + (m * 0.16).toFixed(1) + " GB", rank: "内存占用", share: [2.8, 0.9, 0.7, 0.6, 0.2, 0.18, 0.12, 0.05], fmt: (v) => v + " GB" },
-    pwr: { title: "功耗", tint: "#ffb800", icon: '<svg viewBox="0 0 24 24" fill="none" stroke="#1a9bd7" stroke-width="1.8"><path d="M13 2L4 14h7l-1 8 9-12h-7z"/></svg>',
+    pwr: { title: "功耗", tint: "#ffb800", icon: '<svg viewBox="0 0 24 24" fill="none" stroke="#0096d6" stroke-width="1.8"><path d="M13 2L4 14h7l-1 8 9-12h-7z"/></svg>',
       gauge: () => [S.pwr / 60 * 100, Math.round(S.pwr), "W 功耗"], kv: () => [["峰值", "38 W"], ["温度", deg(S.temp)], ["风扇", Math.round(S.fan) + " 转"]],
       hist: "pwr", peak: (m) => "峰值 " + Math.round(m) + " W", rank: "应用功耗", share: [6.1, 2.2, 1.4, 0.9, 0.2, 0.15, 0.1, 0.05], fmt: (v) => v + " W" },
-    disk: { title: "磁盘", tint: "#8e8e93", level: () => levelColor(S.diskUsed, 85, 95), icon: '<svg viewBox="0 0 24 24" fill="none" stroke="#1a9bd7" stroke-width="1.8"><rect x="3" y="6" width="18" height="12" rx="2"/><path d="M7 14h.01M11 14h6"/></svg>',
+    disk: { title: "磁盘", tint: "#8e8e93", level: () => levelColor(S.diskUsed, 85, 95), icon: '<svg viewBox="0 0 24 24" fill="none" stroke="#0096d6" stroke-width="1.8"><rect x="3" y="6" width="18" height="12" rx="2"/><path d="M7 14h.01M11 14h6"/></svg>',
       gauge: () => [S.diskUsed, S.diskUsed, "% 已用"], kv: () => [["可用", "245 GB"], ["读取", S.diskRead.toFixed(1) + " MB/s"], ["写入", S.diskWrite.toFixed(1) + " MB/s"]],
       hist: "disk", peak: (m) => "峰值 " + m.toFixed(1) + " MB/s", rank: "磁盘读写", two: ["读取", "写入"], share: [[42, 8], [12, 2], [6, 3], [3, 1], [2, 0.5], [1, 0.2], [0.5, 0.1], [0.2, 0]], fmt: (v) => v + " MB" },
-    temp: { title: "温度", tint: "#ff9f0a", level: () => levelColor(S.temp, 80, 95), icon: '<svg viewBox="0 0 24 24" fill="none" stroke="#1a9bd7" stroke-width="1.8"><path d="M14 14.8V4a2 2 0 0 0-4 0v10.8a4 4 0 1 0 4 0z"/></svg>',
+    temp: { title: "温度", tint: "#ff9f0a", level: () => levelColor(S.temp, 80, 95), icon: '<svg viewBox="0 0 24 24" fill="none" stroke="#0096d6" stroke-width="1.8"><path d="M14 14.8V4a2 2 0 0 0-4 0v10.8a4 4 0 1 0 4 0z"/></svg>',
       gauge: () => [S.temp / 110 * 100, deg(S.temp).replace("°", ""), "° 平均"], kv: () => [["最热", deg(S.temp + 7) + " CPU 性能核"], ["CPU", deg(S.temp + 4)], ["GPU", deg(S.temp - 3)]],
       hist: "temp", peak: (m) => "最高 " + deg(m) },
-    fps: { title: "帧率", tint: "#ff375f", icon: '<svg viewBox="0 0 24 24" fill="none" stroke="#1a9bd7" stroke-width="1.8"><path d="M4 16a8 8 0 1 1 16 0"/><path d="M12 16l4-5"/></svg>',
+    fps: { title: "帧率", tint: "#ff375f", icon: '<svg viewBox="0 0 24 24" fill="none" stroke="#0096d6" stroke-width="1.8"><path d="M4 16a8 8 0 1 1 16 0"/><path d="M12 16l4-5"/></svg>',
       gauge: () => [S.fps / 120 * 100, Math.round(S.fps), "fps 帧率"], kv: () => [["屏幕", "内建显示器"], ["刷新率", "120 Hz"], ["状态", "测量中"]],
       hist: "fps", peak: (m) => "峰值 " + Math.round(m) + " 帧" },
-    fan: { title: "风扇", tint: "#30b0c7", icon: '<svg viewBox="0 0 24 24" fill="none" stroke="#1a9bd7" stroke-width="1.8"><circle cx="12" cy="12" r="1.5"/><path d="M12 10.5C11 6 12 3 15 3s3 4-3 7.5zM13.5 12c4.5-1 7.5 0 7.5 3s-4 3-7.5-3zM12 13.5c1 4.5 0 7.5-3 7.5s-3-4 3-7.5zM10.5 12C6 13 3 12 3 9s4-3 7.5 3z"/></svg>',
+    fan: { title: "风扇", tint: "#30b0c7", icon: '<svg viewBox="0 0 24 24" fill="none" stroke="#0096d6" stroke-width="1.8"><circle cx="12" cy="12" r="1.5"/><path d="M12 10.5C11 6 12 3 15 3s3 4-3 7.5zM13.5 12c4.5-1 7.5 0 7.5 3s-4 3-7.5-3zM12 13.5c1 4.5 0 7.5-3 7.5s-3-4 3-7.5zM10.5 12C6 13 3 12 3 9s4-3 7.5 3z"/></svg>',
       gauge: () => [(S.fan - 1000) / 40 + 10, Math.round(S.fan), "转 当前转速"], kv: () => [["目标", String(Math.round(S.fan / 10) * 10)], ["区间", "1000–4900"], ["模式", S.strategy]],
       hist: "fan", peak: (m) => "峰值 " + Math.round(m) + " 转", rank: "发热来源", rankTrailing: "按功耗", limit: 3, share: [6.1, 2.2, 1.4, 0.9, 0.2, 0.15, 0.1, 0.05], fmt: (v) => v + " W" },
   };
@@ -392,7 +395,7 @@
     const data = ranged(S.hist[m.hist]);
     // 有压力的项（CPU、GPU、内存、磁盘、温度）圆环和走势线按压力变色，其他用这一项的固定颜色；标题图标用固定颜色
     const color = m.level ? m.level() : m.tint;
-    let html = header(m.icon.replaceAll("#1a9bd7", m.tint), m.title) + `<div class="pc"><div class="hero-row">${gauge(pct, big, small, false, color)}<dl class="kv">${m.kv().map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join("")}</dl></div>${segctl()}${chart([data], [color], [true])}<div class="chart-foot"><span></span><span>${m.peak(Math.max(...data))}</span></div></div>`;
+    let html = header(m.icon.replaceAll("#0096d6", m.tint), m.title) + `<div class="pc"><div class="hero-row">${gauge(pct, big, small, false, color)}<dl class="kv">${m.kv().map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join("")}</dl></div>${segctl()}${chart([data], [color], [true])}<div class="chart-foot"><span></span><span>${m.peak(Math.max(...data))}</span></div></div>`;
     if (key === "fan") {
       html += `<div class="sec">硬件温度<small>调速依据：${SET.fanBasis} ${deg(SET.fanBasis === "最高温度" ? S.temp + 7 : S.temp)}</small></div><div class="pc rows">${[["CPU 性能核", S.temp + 6], ["CPU 能效核", S.temp - 2], ["GPU", S.temp - 3], ["内存", 41], ["硬盘", 38]].map(([n, v]) => `<div class="r"><span>${n}</span><span>${deg(v)}</span></div>`).join("")}</div>`;
       const PRESETS = { 静音: "75℃ 以下几乎不介入，温度换噪音", 均衡: "60℃ 起提速，90℃ 全速", 性能: "35℃ 起就给基础转速，优先压温" };
@@ -451,7 +454,7 @@
     const t = tracks[S.track];
     const fmt = (s) => Math.floor(s / 60) + ":" + String(Math.floor(s % 60)).padStart(2, "0");
     const devices = [["speaker", "内置扬声器", S.vol + "%"], ["monitor", "外接显示器", ""], ["usb", "USB 音频", "100%"]];
-    return header('<svg viewBox="0 0 24 24" fill="none" stroke="#1a9bd7" stroke-width="2" stroke-linecap="round"><path d="M4 10v4M8 6v12M12 3v18M16 7v10M20 10v4"/></svg>', "音乐频谱") +
+    return header('<svg viewBox="0 0 24 24" fill="none" stroke="#0096d6" stroke-width="2" stroke-linecap="round"><path d="M4 10v4M8 6v12M12 3v18M16 7v10M20 10v4"/></svg>', "音乐频谱") +
       `<div class="mcard" style="background:linear-gradient(160deg, color-mix(in srgb, ${t.bar} 20%, var(--pn-card)) 0%, var(--pn-card) 100%)"><button class="expand" data-act="full" title="全屏频谱"><svg viewBox="0 0 24 24"><path d="M14 4h6v6M10 20H4v-6M20 4l-6 6M4 20l6-6"/></svg></button><div class="mtop"><div class="art" style="background:linear-gradient(135deg, ${t.from}, ${t.via} 55%, ${t.to})"></div><div class="meta"><b>${t.title}</b><span>${t.artist}</span><small>音乐播放器</small></div></div>` +
       `<div class="mbars">${levels.map(() => `<i style="background:${t.bar}"></i>`).join("")}</div>` +
       `<div class="prog"><em style="width:${(S.elapsed / t.len) * 100}%;background:${t.bar}"></em></div><div class="ptime"><span>${fmt(S.elapsed)}</span><span>-${fmt(t.len - S.elapsed)}</span></div>` +
@@ -465,7 +468,7 @@
   const btText = (d) => d.ears ? `<b>L${d.ears[0]} R${d.ears[1]}</b><small class="box">盒 ${d.box}%</small>` : `<b>${d.level == null ? "—" : d.level + "%"}</b>`;
   function btPanel() {
     const on = S.bt.filter((d) => d.on), off = S.bt.filter((d) => !d.on);
-    return header('<svg viewBox="0 0 24 24" fill="none" stroke="#1a9bd7" stroke-width="1.8" stroke-linecap="round"><path d="M5 7a10 10 0 0 0 0 10M8.5 9.5a5 5 0 0 0 0 5M19 7a10 10 0 0 1 0 10M15.5 9.5a5 5 0 0 1 0 5"/><circle cx="12" cy="12" r="1.2" fill="#1a9bd7"/></svg>', "蓝牙") +
+    return header('<svg viewBox="0 0 24 24" fill="none" stroke="#0096d6" stroke-width="1.8" stroke-linecap="round"><path d="M5 7a10 10 0 0 0 0 10M8.5 9.5a5 5 0 0 0 0 5M19 7a10 10 0 0 1 0 10M15.5 9.5a5 5 0 0 1 0 5"/><circle cx="12" cy="12" r="1.2" fill="#0096d6"/></svg>', "蓝牙") +
       `<div class="pc"><div class="bt-top">${on.map((d) => `<div class="bt-dev" data-bt="${S.bt.indexOf(d)}" title="点击断开"><div class="big">${ringSVG(btLevel(d) ?? 0, 58, 5, btLevel(d) == null ? "transparent" : batteryColor(btLevel(d)), "var(--pn-inset)")}<div class="g">${svgIcon(d.icon)}</div></div><small>${d.name}</small>${btText(d)}</div>`).join("") || '<div class="empty-bt">没有已连接的设备</div>'}</div></div>` +
       (off.length ? `<div class="sec">其他设备</div><div class="pc">${off.map((d) => `<div class="bt-other"><span class="di">${svgIcon(d.icon)}</span><span>${d.name}</span><button data-bt="${S.bt.indexOf(d)}">连接</button></div>`).join('<div style="height:8px"></div>')}</div>` : "") +
       `<div class="pf"><span>点设备连接 / 断开</span><span><b data-act="btsys">蓝牙设置</b><b data-act="quit">退出</b></span></div>`;
@@ -593,22 +596,21 @@
   function detailOf(id) {
     const d = (...rows) => join(...rows);
     switch (id) {
-      case "music": return d(row("其他程序的声音", "游戏、剪辑软件等也显示", tg("other")), row("停止播放后收起", "", sg("collapse", ["立即", "10 秒", "不隐藏"], 220)),
+      case "music": return d(row("其他程序的声音", "", tg("other")), row("停止播放后收起", "", sg("collapse", ["立即", "10 秒", "不隐藏"], 220)),
         row("形状", "", sg("shape", ["竖条", "点阵"], 190)), row("颜色", "", sg("color", ["专辑色", "图标色", "白色"], 220)),
-        row("封面旋转", "播放时像黑胶一样转", tg("spin")), row("播放按钮", "上一首、播放 / 暂停、下一首", tg("buttons")),
-        row("灵敏度", "安静的歌调高", sg("sens", ["低", "标准", "高"], 190)), row("系统录音权限", "只读取播放的声音，不录麦克风", btn("打开权限设置")));
+        row("封面旋转", "", tg("spin")), row("播放按钮", "", tg("buttons")),
+        row("灵敏度", "", sg("sens", ["低", "标准", "高"], 190)), row("系统录音权限", "不录麦克风", btn("打开权限设置")));
       case "fan": return d(row("调速依据温度", "CPU/GPU 均温 · " + Math.round(S.temp) + "°C", sg("fanBasis", ["最高温度", "平均温度"], 200)),
         row("温度曲线", "预设：" + S.preset, btn("编辑", 'data-fan-edit="1"')), row("规则", "2 条 · 启用 2 条", btn("编辑", 'data-fan-edit="1"')),
-        row("控制组件", "已安装，正常", btn("卸载")), row("退出时交还系统", "退出、崩溃或睡眠时自动交还", '<small class="muted">始终开启</small>'),
+        row("控制组件", "已安装，正常", btn("卸载")), row("退出时交还系统", "", '<small class="muted">始终开启</small>'),
         '<p class="note">通过未公开的接口调速，系统升级后可能失效。转速有安全下限、不会停转；异常时切回“自动”或卸载组件。</p>');
       case "net": return d(row("显示方式", "自动：只显示较快的一方", sg("netMode", ["自动", "上传和下载"], 180)), row("单位", "", sg("netUnit", ["MB/s", "Mb/s"], 160)),
         row("流量统计每月起始日", "对齐运营商账单", `<select class="sel" data-month="1">${Array.from({ length: 28 }, (_, i) => `<option value="${i + 1}"${SET.monthStart === i + 1 ? " selected" : ""}>${i + 1} 日</option>`).join("")}</select>`),
-        row("清零流量统计", "今日和本月重新计", btn("清零", 'data-clear="1"')));
-      case "temp": return d(row("温度单位", "岛上、面板和提醒里的温度", sg("tempUnit", ["℃", "℉"], 120)));
-      case "fps": return d(row("测量方式", "统计前台窗口所在屏幕每秒画面变化的次数（islet 自己不算）；画面静止时数字会变低，最高不超过屏幕刷新率", ""),
-        row("屏幕录制权限", "已授权。只数画面变化，不保存、不上传画面", btn("已授权")));
-      case "bt": return d(row("低电量提醒", "电量低于下面的值时通知，标题带设备类型", tg("btAlert")), row("提醒电量", "", sg("btLevel", ["10%", "20%", "30%"], 180)), row("提示音", "", tg("btSound")),
-        row("测试", "用已连接的设备发一条示例通知", btn("发送测试通知", 'data-test="1"')));
+        row("清零流量统计", "", btn("清零", 'data-clear="1"')));
+      case "temp": return d(row("温度单位", "", sg("tempUnit", ["℃", "℉"], 120)));
+      case "fps": return d(row("屏幕录制权限", "", btn("已授权")));
+      case "bt": return d(row("低电量提醒", "", tg("btAlert")), row("提醒电量", "", sg("btLevel", ["10%", "20%", "30%"], 180)), row("提示音", "", tg("btSound")),
+        row("测试通知", "", btn("发送测试通知", 'data-test="1"')));
       default: return "";
     }
   }
@@ -626,7 +628,7 @@
   const metricsOf = (order) => order.filter((id) => !isModule(id));
   const flatten = (mods, mets) => mods.flatMap((m) => (m === "metrics" ? mets : [m]));
   const grouped = (order) => flatten(modulesOf(order), metricsOf(order));
-  const SUBS = { music: "播放时展开封面和频谱", metrics: "CPU、内存、温度、网速等，在下面逐项选择", bt: "耳机、键盘、鼠标的电量圆环" };
+  const SUBS = {};
   const METRICS_TILE = ["系统指标", "#30d158", '<path d="M4 16a8 8 0 1 1 16 0"/><path d="M12 16l3-4"/>'];
   // 一行：图标、名称（模块带说明），右侧是显示开关和拖动把手；grp 决定能和谁换位置
   function itemRow(id, grp, compact) {
@@ -634,13 +636,14 @@
     const on = id === "metrics" ? SET.metrics : !SET.hidden.has(id);
     const sw = id === "metrics" ? tg("metrics") : vis(id);
     return `<div class="item${on ? "" : " off"}${drag && drag.id === id ? " dragging" : ""}" data-item="${id}" data-grp="${grp}">${tile(it.color, it.path, compact ? 22 : 30)}` +
-      `<span class="nm">${it.name}${!compact && SUBS[id] ? `<small>${SUBS[id]}</small>` : ""}</span>${sw}<span class="grip" title="按住拖动调整顺序"><svg viewBox="0 0 24 24"><path d="M5 8h14M5 12h14M5 16h14"/></svg></span></div>`;
+      `<span class="nm"${id === "metrics" ? ' data-mets="1"' : ""}><span>${it.name}${id === "metrics" ? `<i class="chev${SET.metsOpen ? " open" : ""}">›</i>` : ""}</span>` +
+      `${id === "metrics" && !SET.metsOpen ? `<small>显示 ${metricsOf(SET.order).filter((x) => !SET.hidden.has(x)).length} 项</small>` : ""}</span>${sw}<span class="grip" title="按住拖动调整顺序"><svg viewBox="0 0 24 24"><path d="M5 8h14M5 12h14M5 16h14"/></svg></span></div>`;
   }
   function displayList() {
     if (SET.split) {
       // 分体：每张卡片是一个小胶囊；系统指标卡片里列出各项指标，只在卡片里排序
       return modulesOf(SET.order).map((m) => `<div class="card list">${itemRow(m, "mod", false)}` +
-        (m === "metrics" ? `<div class="mets${SET.metrics ? "" : " off"}">${metricsOf(SET.order).map((id) => '<div class="div"></div>' + itemRow(id, "met", true)).join("")}</div>` : "") + `</div>`).join("");
+        (m === "metrics" && SET.metsOpen ? `<div class="mets${SET.metrics ? "" : " off"}">${metricsOf(SET.order).map((id) => '<div class="div"></div>' + itemRow(id, "met", true)).join("")}</div>` : "") + `</div>`).join("");
     }
     // 合并：一个平铺列表，音乐、蓝牙、各项指标任意排序；没有“系统指标”整组行，整组关着时在上面提示
     return (SET.metrics ? "" : '<p class="hint">系统指标已整组隐藏 · <a href="#" data-set="metrics">打开</a></p>') +
@@ -648,18 +651,20 @@
   }
 
   function islandPage() {
-    return `<p class="hint">改动会实时显示在菜单栏的灵动岛上</p>` +
+    return `` +
       section("胶囊", join(
-        row("悬浮显示", "将胶囊居中放在刘海或菜单栏下方", tg("float"), tile("#0a84ff", '<rect x="4" y="4" width="12" height="12" rx="2"/><rect x="8" y="8" width="12" height="12" rx="2"/>')),
-        SET.float ? row("全屏时保持悬浮", "在支持的全屏视频和游戏上显示胶囊", tg("fullFloat"), tile("#0a84ff", '<path d="M4 9V4h5M20 15v5h-5M4 4l6 6M20 20l-6-6"/>')) : "",
-        SET.float ? row("自由拖动", "按住胶囊拖到想放的位置", tg("freeDrag"), tile("#0a84ff", '<path d="M8 13V5.5a1.5 1.5 0 0 1 3 0V12M11 11.5V4a1.5 1.5 0 0 1 3 0v8M14 6a1.5 1.5 0 0 1 3 0v7M17 8.5a1.5 1.5 0 0 1 3 0V15a6 6 0 0 1-6 6h-1a6 6 0 0 1-5-2.7L5 14a1.5 1.5 0 0 1 2.5-1.7L8 13"/>')) : "",
-        SET.float ? "" : row("始终在菜单栏最左侧", "关闭后可按住 ⌘ 拖到任意位置", tg("leftmost"), tile("#30d158", '<path d="M9 3h6l-1 6 3 3H7l3-3zM12 12v9"/>')),
-        row("胶囊形态", "分体：音乐、系统指标、蓝牙电量各成一个小胶囊；合并：连成一个",
+        row("悬浮显示", "", tg("float"), tile("#0a84ff", '<rect x="4" y="4" width="12" height="12" rx="2"/><rect x="8" y="8" width="12" height="12" rx="2"/>')),
+        SET.float ? row("全屏时保持悬浮", "", tg("fullFloat"), tile("#0a84ff", '<path d="M4 9V4h5M20 15v5h-5M4 4l6 6M20 20l-6-6"/>')) : "",
+        SET.float ? row("自由拖动", "", tg("freeDrag"), tile("#0a84ff", '<path d="M8 13V5.5a1.5 1.5 0 0 1 3 0V12M11 11.5V4a1.5 1.5 0 0 1 3 0v8M14 6a1.5 1.5 0 0 1 3 0v7M17 8.5a1.5 1.5 0 0 1 3 0V15a6 6 0 0 1-6 6h-1a6 6 0 0 1-5-2.7L5 14a1.5 1.5 0 0 1 2.5-1.7L8 13"/>')) : "",
+        SET.float ? "" : row("始终在菜单栏最左侧", "关闭后按住 ⌘ 拖动", tg("leftmost"), tile("#30d158", '<path d="M9 3h6l-1 6 3 3H7l3-3zM12 12v9"/>')),
+        row("胶囊形态", "",
           `<div class="sg" style="width:140px"><button data-split="1" class="${SET.split ? "sel" : ""}">分体</button><button data-split="0" class="${SET.split ? "" : "sel"}">合并</button></div>`,
           tile("#bf5af2", '<rect x="3" y="7" width="8" height="10" rx="3"/><rect x="13" y="7" width="8" height="10" rx="3"/>')),
-        row("底色", "", sg("bg", ["专辑色", "渐变", "黑色"], 220)))) +
-      `<div class="section" data-list="1"><div class="sh">显示内容<small>${SET.split ? "每张卡片是一个小胶囊，按住拖动调整顺序" : "关掉开关即隐藏，按住拖动调整顺序"}</small></div>${displayList()}` +
-      (SET.order.some((id) => !isModule(id) && onIsland(id)) ? "" : '<p class="hint">没有常驻指标时胶囊可能会消失，再次打开 islet 即可回到设置</p>') +
+        row("样式", SET.float ? "" : "「玻璃」仅在悬浮模式生效",
+          `<div class="sg" style="width:200px">${["渐变", "黑色", "玻璃"].map((o) => o === "玻璃" && !SET.float ? `<button class="dis" disabled>${o}</button>` : `<button data-set="bg" data-v="${o}" class="${(SET.bg === "玻璃" && !SET.float ? "渐变" : SET.bg) === o ? "sel" : ""}">${o}</button>`).join("")}</div>`,
+          tile("#ff9f0a", '<circle cx="12" cy="12" r="9"/><circle cx="8" cy="10" r="1"/><circle cx="12" cy="7.5" r="1"/><circle cx="16" cy="10" r="1"/>')))) +
+      `<div class="section" data-list="1"><div class="sh">显示内容</div>${displayList()}` +
+      (SET.order.some((id) => !isModule(id) && onIsland(id)) ? "" : '<p class="hint">指标全关时胶囊可能消失</p>') +
       `<div class="reset"><a href="#" data-reset="1">恢复默认显示和顺序</a></div></div>`;
   }
   // 显示器（和软件一致，以 27 寸 2K 屏为例）：开 HiDPI 后只列 islet 补上的 133%、143%、154%（200% 字太大不列），推荐 133%；
@@ -683,9 +688,9 @@
   function extPage() {
     return section("鼠标滚动", join(
         row("平滑滚动", SET.smooth ? "已启用，触控板不受影响" : "让有刻度的鼠标滚轮像触控板一样顺滑", tg("smooth"), tile("#0a84ff", '<rect x="7" y="3" width="10" height="18" rx="5" fill="#fff" stroke="none"/><path d="M12 6.5v4" stroke="#0a84ff"/>')),
-        SET.smooth ? row("滚动距离", "滚轮每转一格移动多远", sg("dist", ["短", "中", "长"], 170)) : "",
-        SET.smooth ? row("平滑程度", "越高越柔和，停下得越慢", sg("soft", ["低", "中", "高"], 170)) : "",
-        SET.smooth ? row("反转滚动方向", "只影响鼠标滚轮，触控板不变", tg("reverse")) : "")) +
+        SET.smooth ? row("滚动距离", "", sg("dist", ["短", "中", "长"], 170)) : "",
+        SET.smooth ? row("平滑程度", "", sg("soft", ["低", "中", "高"], 170)) : "",
+        SET.smooth ? row("反转滚动方向", "不影响触控板", tg("reverse")) : "")) +
       section("显示器", join(
         row("外接显示器 · 27 英寸", displaySubtitle(), `<span class="btns"><span class="muted" style="font-size:13px;color:var(--pn-text2)">HiDPI 支持</span>${tg("hidpi")}</span>`, tile("#64d2ff", '<rect x="3" y="4" width="18" height="12" rx="1.5"/><path d="M9 20h6M12 16v4"/>')),
         (modes().length ? `<div class="modes">${modes().map(([m, tag]) => `<span class="mode${m === curMode() ? " sel" : ""}" data-mode="${m}"><b>${modeSize(m)}</b><small>${tag}</small><i>${scaleOf(m)}</i></span>`).join("")}</div>` : "")));
@@ -702,28 +707,27 @@
     `<button class="del" data-rule-del="${i}" title="删除这条规则">✕</button></div>`;
   function generalPage() {
     return section("基本", join(
-        row("登录时启动", "", tg("login"), tile("#30d158", '<path d="M12 3v8M7 6.5a7 7 0 1 0 10 0"/>')),
-        row("主题", "面板和窗口", sg("theme", ["浅色", "深色", "跟随系统"], 200), tile("#5e5ce6", '<circle cx="12" cy="12" r="8"/><path d="M12 4a8 8 0 0 1 0 16z" fill="#fff" stroke="none"/>')))) +
-      section("提醒", join(row("提醒规则", "指标持续过高时发通知，回落后才会再次提醒", btn("添加", 'data-rule-add="1"'), tile("#ff453a", '<path d="M6 16V11a6 6 0 0 1 12 0v5l2 2H4zM10 21h4" fill="#fff" stroke="none"/>')),
+        row("登录时启动", "", tg("login"), tile("#30d158", '<path d="M12 3v8M7 6.5a7 7 0 1 0 10 0"/>')))) +
+      section("提醒", join(row("提醒规则", "", btn("添加", 'data-rule-add="1"'), tile("#ff453a", '<path d="M6 16V11a6 6 0 0 1 12 0v5l2 2H4zM10 21h4" fill="#fff" stroke="none"/>')),
         ...SET.rules.map(ruleRow))) +
       section("数据", join(
         row("刷新频率", "越快越耗电", sg("rate", ["1 秒", "2 秒", "3 秒"], 170), tile("#0a84ff", '<path d="M20 12a8 8 0 1 1-2.3-5.7M20 4v4h-4"/>')),
         row("排行条数", "", sg("rank", ["3", "5", "8"], 170), tile("#32ade6", '<path d="M9 6h11M9 12h11M9 18h11M4 6h.01M4 12h.01M4 18h.01"/>')))) +
-      section("重置", row("恢复默认设置", "重置 islet 的应用偏好", btn("恢复默认", 'data-reset-all="1"'), tile("#8e8e93", '<path d="M4 9a8 8 0 1 1 1 7M4 4v5h5"/>')));
+      section("重置", row("恢复默认设置", "", btn("恢复默认", 'data-reset-all="1"'), tile("#8e8e93", '<path d="M4 9a8 8 0 1 1 1 7M4 4v5h5"/>')));
   }
   let checking = false;
   function aboutPage() {
-    return `<div class="about"><img src="icon.png" alt=""><div><div><b>islet</b> <small>v1.3.5 (78)</small></div><div class="sub">菜单栏里的灵动岛</div></div></div>` +
+    return `<div class="about"><img src="icon.png" alt=""><div><div><b>islet</b> <small>v1.4.0 (79)</small></div><div class="sub">菜单栏里的灵动岛</div></div></div>` +
       section("项目", row("Buerxzhang / islet", "GitHub 开源项目", `<span class="btns"><a class="pbtn" href="./">官网</a><a class="pbtn" href="https://github.com/Buerxzhang/islet" target="_blank" rel="noopener">GitHub</a><a class="pbtn" href="https://github.com/Buerxzhang/islet" target="_blank" rel="noopener">★ Star</a></span>`, tile("#1d1d1f", '<path d="M8 8l-4 4 4 4M16 8l4 4-4 4M14 5l-4 14"/>'))) +
       section("更新", join(
-        row(checking ? "软件更新" : "已是最新版本", checking ? "正在查询 GitHub…" : "当前是 1.3.5", btn(checking ? "检查中…" : "检查更新", 'data-check="1"'), tile("#0a84ff", '<path d="M20 12a8 8 0 1 1-2.3-5.7M20 4v4h-4"/>')),
-        row("自动检查更新", "每天一次，有新版本时打开这一页", tg("autoUpdate"), tile("#ff9f0a", '<path d="M6 16V11a6 6 0 0 1 12 0v5l2 2H4zM10 21h4" fill="#fff" stroke="none"/>')))) +
+        row(checking ? "软件更新" : "已是最新版本", checking ? "正在查询 GitHub…" : "当前是 1.4.0", btn(checking ? "检查中…" : "检查更新", 'data-check="1"'), tile("#0a84ff", '<path d="M20 12a8 8 0 1 1-2.3-5.7M20 4v4h-4"/>')),
+        row("自动检查更新", "", tg("autoUpdate"), tile("#ff9f0a", '<path d="M6 16V11a6 6 0 0 1 12 0v5l2 2H4zM10 21h4" fill="#fff" stroke="none"/>')))) +
       section("诊断", row("自检通过，一切正常", "反馈时自动复制报告，粘贴即可", `<span class="btns">${btn("复制报告", 'data-copy="1"')}<a class="pbtn" href="https://github.com/Buerxzhang/islet/issues/new" target="_blank" rel="noopener">反馈问题</a></span>`, tile("#ff453a", '<path d="M6 4v5a4 4 0 0 0 8 0V4M10 13v2a5 5 0 0 0 10 0v-2"/><circle cx="20" cy="11" r="1.6"/>')));
   }
 
   function renderSettings() {
     win.querySelector(".side").innerHTML = PAGES.map(([name, color, path], i) => (PAGE_SEP.has(i) ? '<div class="sep"></div>' : "") +
-      `<div class="nav${SET.page === name ? " sel" : ""}" data-page="${name}">${tile(color, path, 24)}<span>${name}</span>${name === "关于" ? "<small>v1.3.5</small>" : ""}</div>`).join("");
+      `<div class="nav${SET.page === name ? " sel" : ""}" data-page="${name}">${tile(color, path, 24)}<span>${name}</span>${name === "关于" ? "<small>v1.4.0</small>" : ""}</div>`).join("");
     const content = win.querySelector(".content"), scroll = content.scrollTop;
     content.innerHTML = `<h3>${SET.page}</h3>` + { 灵动岛: islandPage, 扩展功能: extPage, 通用: generalPage, 关于: aboutPage, ...pageFns }[SET.page]();
     content.scrollTop = scroll;
@@ -742,14 +746,8 @@
     fitSettings();
   }
 
-  function applyTheme() {
-    const dark = SET.theme === "深色" || (SET.theme === "跟随系统" && matchMedia("(prefers-color-scheme: dark)").matches);
-    document.documentElement.classList.toggle("pn-dark", dark);
-    document.documentElement.classList.toggle("pn-light", !dark);
-  }
-  matchMedia("(prefers-color-scheme: dark)").addEventListener("change", applyTheme);
-  applyTheme();
-  function applySettingChange() { applyTheme(); renderSettings(); renderIsland(); if (typeof scheduleTick === "function") scheduleTick(); }
+  document.documentElement.classList.add("pn-light");   // 面板和窗口统一浅色（和软件一致，没有主题设置）
+  function applySettingChange() { renderSettings(); renderIsland(); if (typeof scheduleTick === "function") scheduleTick(); }
   win.addEventListener("click", (e) => {
     if (e.target.closest("[data-test]")) {   // 蓝牙：发一条示例通知到通知中心
       notes.unshift({ t: "键盘 Keys K2 电量低", b: "剩余 18%，记得充电（测试通知）", time: "刚刚" });
@@ -786,12 +784,13 @@
       return;
     }
     if (e.target.closest("[data-copy]")) {
-      const report = "islet 1.3.5 (78) · 诊断报告（示例）\n机型：Mac（示例）\n系统：macOS 15\n传感器：8 个\n风扇：自动";
+      const report = "islet 1.4.0 (79) · 诊断报告（示例）\n机型：Mac（示例）\n系统：macOS 15\n传感器：8 个\n风扇：自动";
       navigator.clipboard?.writeText(report).catch(() => {});
       showToast("已复制诊断报告（示例），到 GitHub 粘贴即可");
       return;
     }
     if (dragMoved) return;   // 刚拖完松手，不当成点击
+    if (e.target.closest("[data-mets]")) { SET.metsOpen = !SET.metsOpen; renderSettings(); return; }   // 系统指标卡片展开 / 收起
     const sp = e.target.closest("[data-split]");
     if (sp) { SET.split = sp.dataset.split === "1"; applySettingChange(); return; }
     const t = e.target.closest("[data-set],[data-page]");
@@ -1042,7 +1041,7 @@
     const check = (on) => `<i>${on ? "✓" : ""}</i>`;
     const item = (m, label, { on = false, off = false, id = "", kbd = "" } = {}) =>
       `<div class="${off ? "dis" : ""}" ${off ? "" : `data-m="${m}"`} ${id ? `data-id="${id}"` : ""}>${check(on)}${label}${kbd ? `<kbd>${kbd}</kbd>` : ""}</div>`;
-    let html = `<div class="dis"><i></i>islet 1.3.5</div><hr>`;
+    let html = `<div class="dis"><i></i>islet 1.4.0</div><hr>`;
     if (at && shown.includes(at)) {
       const name = nameOf(at);
       html += item("vis", isModule(at) ? `隐藏${name}模块` : /^[A-Za-z]/.test(name) ? `隐藏 ${name} 指标` : `隐藏${name}指标`, { off: lastOne, id: at });

@@ -161,6 +161,8 @@ enum RenderTargets {
                 view.audio = (b, b.preferredWidth)
                 view.audioLeadsWithCircle = b.leadsWithCircle
                 view.backdrop = SpectrumLook(backdrop: .gradient).backdropColors(tint: b.effectiveTint)
+            } else {
+                view.backdrop = SpectrumLook(backdrop: .gradient).backdropColors(tint: nil)   // 没播放：默认的主题蓝渐变
             }
             // 先定高度再取宽度：两端圆形的留白按高度计算，高度为 0 时宽度会少算
             view.frame = NSRect(x: 0, y: 0, width: 10, height: rowHeight)
@@ -212,10 +214,10 @@ enum RenderTargets {
         .init(shape: .bars, tint: .white, backdrop: .black, controls: false),
         .init(shape: .bars, tint: .album, backdrop: .gradient, controls: false),
         .init(shape: .bars, tint: .album, backdrop: .black, controls: true),
-        .init(shape: .dots, tint: .album, backdrop: .album, controls: true),
-        .init(shape: .bars, tint: .album, backdrop: .album, controls: false),
-        .init(shape: .bars, tint: .album, backdrop: .album, controls: true),
-        .init(shape: .bars, tint: .album, backdrop: .album, controls: true),
+        .init(shape: .dots, tint: .album, backdrop: .gradient, controls: true),
+        .init(shape: .bars, tint: .album, backdrop: .gradient, controls: false),
+        .init(shape: .bars, tint: .album, backdrop: .gradient, controls: true),
+        .init(shape: .bars, tint: .album, backdrop: .gradient, controls: true),
     ]
     let rowHeight: CGFloat = 24, width: CGFloat = 200, scale: CGFloat = 3
     let levels = (0..<SpectrumAnalyzer.bandCount).map { i in Float(max(0.08, 0.85 * exp(-pow(Double(i) - 7, 2) / 30) + 0.15)) }
