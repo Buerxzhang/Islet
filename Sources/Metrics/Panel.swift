@@ -7,10 +7,9 @@ import SwiftUI
 // MARK: - 数据
 
 struct HeroData {
-    enum Tone { case accent, load, temperature }
     var fraction: Double?
-    var tone: Tone = .accent
-    var toneValue: Double?          // load：0...1；temperature：℃
+    /// 压力等级（CPU、GPU、内存、磁盘、温度）：圆环绿 / 橙 / 红；nil 时用这一项的固定颜色
+    var level: StatusIcons.Level?
     var value = "—"
     var unit = ""
     var rows: [(String, String)] = []
@@ -166,6 +165,7 @@ final class AppIcons {
 extension Metric {
     var symbol: String {
         switch self {
+        // 面板标题、设置里的图标块共用同一套图标
         case .network: return "arrow.up.arrow.down"
         case .cpu: return "cpu"
         case .gpu: return "square.stack.3d.up"
@@ -175,6 +175,33 @@ extension Metric {
         case .fan: return "fan"
         case .temperature: return "thermometer.medium"
         case .fps: return "gauge.with.needle"
+        }
+    }
+
+    /// 变色阈值，岛和面板共用：value 为 CPU / GPU / 磁盘 0...1、温度 ℃、内存压力（1 正常 / 2 偏高 / 4 严重）。
+    /// 功耗、风扇、帧率、网速没有压力，总是 normal。
+    func level(_ value: Double?) -> StatusIcons.Level {
+        guard let value else { return .normal }
+        switch self {
+        case .cpu, .gpu: return value >= 0.9 ? .critical : value >= 0.7 ? .warning : .normal
+        case .temperature: return value >= 95 ? .critical : value >= 80 ? .warning : .normal
+        case .memory: return value >= 4 ? .critical : value >= 2 ? .warning : .normal
+        case .disk: return value >= 0.95 ? .critical : value >= 0.85 ? .warning : .normal
+        default: return .normal
+        }
+    }
+
+    /// 每项固定的颜色（和设置里的图标块一致）：面板标题图标；没有“压力”的项（功耗、风扇、帧率、网速）圆环和走势线也用它。
+    var tint: Color {
+        switch self {
+        case .cpu, .network: return Color(hex: 0x0A84FF)
+        case .gpu: return Color(hex: 0x5E5CE6)
+        case .memory: return Color(hex: 0x30D158)
+        case .disk: return Color(hex: 0x8E8E93)
+        case .power: return Color(hex: 0xFFB800)
+        case .temperature: return Color(hex: 0xFF9F0A)
+        case .fan: return Color(hex: 0x30B0C7)
+        case .fps: return Color(hex: 0xFF375F)
         }
     }
 
@@ -273,9 +300,10 @@ struct PanelView: View {
 
     private func header(_ p: Palette) -> some View {
         HStack(spacing: 8) {
+            // 图标和设置里的图标块同一个，这里只画彩色图标、不带底块
             Image(systemName: model.metric.symbol)
                 .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(p.accentFill)
+                .foregroundStyle(model.metric.tint)
                 .frame(width: 20)
             Text(model.metric.panelTitle).font(Typo.title).foregroundStyle(p.text)
             Spacer()
@@ -293,10 +321,11 @@ struct PanelView: View {
     private func heroCard(_ p: Palette) -> some View {
         let hero = model.hero
         let color: Color? = {
-            switch hero.tone {
-            case .accent: return nil
-            case .load: return p.load(hero.toneValue)
-            case .temperature: return p.temperature(hero.toneValue)
+            switch hero.level {
+            case nil: return model.metric.tint
+            case .normal: return p.cool
+            case .warning: return p.warm
+            case .critical: return p.hot
             }
         }()
         return Card(padding: 14) {
@@ -324,7 +353,9 @@ struct PanelView: View {
 
     /// 最近几分钟的走势（每次刷新一个点）。
     private func historyChart(_ p: Palette, color: Color?) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
+        // 两条线（网速下载 / 上传、磁盘读取 / 写入）固定蓝 / 绿，和岛上的箭头一致；单线跟圆环同色
+        let color = model.history2 != nil ? Metric.network.tint : color
+        return VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 8) {
                 Segmented(options: [(0, "5 分"), (1, "1 时"), (2, "24 时")], selection: model.historyRange) { value in
                     model.historyRange = value
@@ -662,6 +693,9 @@ struct PanelView: View {
         if model.fan == nil { return "没有可控制的风扇" }
         guard config.strategy != .auto else { return "系统控制中" }
         if !fanClient.isInstalled { return "尚未安装控制组件" }
+        // 程序更新后组件没跟着更新，或不在“应用程序”里运行：选的策略没有生效，别显示成在接管
+        if !fanClient.isHelperCurrent { return "控制组件需要更新 · 系统控制中" }
+        if !fanClient.isRunningFromApplications { return "需在“应用程序”里运行 · 系统控制中" }
         guard let status else { return "连接组件中…" }
         if status.controlling { return "接管中 · 目标 \(Int(status.target)) 转" }
         if status.strategy == .rules { return "规则未触发 · 系统控制" }
@@ -710,7 +744,7 @@ struct PanelView: View {
             VStack(alignment: .leading, spacing: 3) {
                 Text(row.name).font(Typo.body).foregroundStyle(p.text).lineLimit(1).truncationMode(.tail)
                 GeometryReader { geo in
-                    Capsule().fill(p.accentFill.opacity(0.55))
+                    Capsule().fill(model.metric.tint.opacity(0.55))
                         .frame(width: max(2, geo.size.width * row.share), height: 2)
                 }
                 .frame(height: 2)

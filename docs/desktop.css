@@ -158,7 +158,8 @@ html.desk .dock { display: flex; position: fixed; z-index: 9700; left: 50%; bott
 .gauge { width: 96px; height: 96px; position: relative; flex: none; }
 .gauge svg { width: 96px; height: 96px; transform: rotate(-90deg); }
 .gauge .v { position: absolute; inset: 0; display: grid; place-content: center; text-align: center; }
-.gauge .v b { font-size: 22px; font-weight: 700; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.gauge .v b { font-size: 22px; font-weight: 700; line-height: 1.1; font-variant-numeric: tabular-nums; font-stretch: condensed; }
+.gauge .v b i { font-style: normal; font-size: 13px; }
 .gauge .v small { font-size: 10px; color: var(--pn-text3); }
 .kv { display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; font-size: 12px; }
 .kv dt { color: var(--pn-text3); }
@@ -297,7 +298,14 @@ html.desk .win.settings > .tb .ttl { color: var(--pn-text2); }
 .settings .item .chev svg { width: 10px; height: 10px; fill: none; stroke: var(--pn-text3); stroke-width: 3.2; stroke-linecap: round; stroke-linejoin: round; }
 .settings .item .chev.open { transform: rotate(90deg); }
 .settings .item .chev.none { visibility: hidden; }
-.settings .item .nm { flex: 1; }
+.settings .item .nm { flex: 1; display: flex; flex-direction: column; }
+.settings .item .nm small { color: var(--pn-text3); font-size: 11px; margin-top: 2px; }
+.settings .item.off .nm, .settings .item.off .tile { opacity: 0.45; }
+.settings .item .tg { cursor: pointer; }
+.settings .list + .list { margin-top: 8px; }
+.settings .mets { padding-left: 40px; }
+.settings .mets.off { opacity: 0.45; pointer-events: none; }
+.settings .hint a { color: var(--pn-accent-text, #1a9bd7); text-decoration: none; font-weight: 500; }
 .settings .item .grip { width: 28px; height: 30px; display: grid; place-items: center; }
 .settings .item .grip svg { width: 14px; height: 14px; stroke: var(--pn-text3); stroke-width: 2; stroke-linecap: round; }
 .settings .item.flash { animation: flash 1.2s ease; }
@@ -309,8 +317,6 @@ html.desk .win.settings > .tb .ttl { color: var(--pn-text2); }
 .settings .reset a { color: var(--pn-text2); font-weight: 500; text-decoration: none; }
 .settings .modes { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; padding: 8px 0 6px; }
 .settings .mode i { display: block; font-style: normal; font-size: 10px; color: var(--pn-text3); opacity: 0.7; }
-.settings .modes-more { text-align: right; font-size: 11px; padding-bottom: 6px; }
-.settings .modes-more a { color: var(--pn-accent-text); text-decoration: none; }
 .settings .mode { flex: 1; text-align: center; border-radius: 8px; background: var(--pn-bg); padding: 8px 2px; font-size: 11px; }
 .settings .mode b { display: block; font-weight: 600; font-size: 12px; }
 .settings .mode small { color: var(--pn-text3); }
@@ -412,10 +418,12 @@ html.pn-dark .ctxmenu .sub { background: rgba(40, 40, 44, 0.94); box-shadow: 0 1
 /* ---------- 主题（设置 › 通用 › 主题：面板和窗口） ---------- */
 :root { --pn-bg: #f2f2f5; --pn-card: #fff; --pn-text: #1d1d1f; --pn-text2: #55555b; --pn-text3: #6e6e73; --pn-inset: #e4e4ea; --pn-stroke: rgba(0,0,0,0.08); --pn-stroke2: rgba(0,0,0,0.12);
   --pn-sep: rgba(0,0,0,0.1); --pn-accent-text: #00669e; --pn-accent: #1a9bd7; --pn-sel: rgba(26,155,215,0.18); --pn-glass: rgba(242,242,246,0.86); --pn-soft: rgba(29,29,31,0.04);
-  --pn-side: rgba(228,228,234,0.5); --pn-hover: rgba(0,0,0,0.05); }
-html.pn-dark { --pn-bg: #1c1c1e; --pn-card: #2a2a2e; --pn-text: #f5f5f7; --pn-text2: #a1a1a6; --pn-text3: #8a8a90; --pn-inset: #141416; --pn-stroke: rgba(255,255,255,0.06); --pn-stroke2: rgba(255,255,255,0.12);
+  --pn-side: rgba(228,228,234,0.5); --pn-hover: rgba(0,0,0,0.05);
+  --pn-cool: #1b8a3e; --pn-warm: #a65c00; --pn-hot: #c4000e; }
+html.pn-dark { --pn-bg: #0f0f10; --pn-card: #1c1c1e; --pn-text: #f5f5f7; --pn-text2: #a1a1a6; --pn-text3: #8a8a90; --pn-inset: #09090a; --pn-stroke: rgba(255,255,255,0.07); --pn-stroke2: rgba(255,255,255,0.12);
   --pn-sep: rgba(255,255,255,0.1); --pn-accent-text: #46c8ff; --pn-accent: #46c8ff; --pn-sel: rgba(70,200,255,0.18); --pn-glass: rgba(40,40,44,0.86); --pn-soft: rgba(255,255,255,0.05);
-  --pn-side: rgba(20,20,22,0.5); --pn-hover: rgba(255,255,255,0.06); }
+  --pn-side: rgba(20,20,22,0.5); --pn-hover: rgba(255,255,255,0.06);
+  --pn-cool: #30d158; --pn-warm: #ff9f0a; --pn-hot: #ff453a; }
 /* 关于、常见问题、功能这些窗口也跟着主题走 */
 html.desk.pn-dark { --bg: #0f1016; --card: #181a22; --text: #eceef3; --text2: #a7abb7; --text3: #737887; --line: rgba(255,255,255,0.1); --accent-text: #8fa7ff; --soft: #1d1f28; --cta: #2fa463; }
 html.desk.pn-light { --bg: #fbfaf7; --card: #ffffff; --text: #16171d; --text2: #565a66; --text3: #8a8e99; --line: rgba(20,22,40,0.1); --accent-text: #2a4bd7; --soft: #f1efe9; --cta: #1f8a4c; }
@@ -431,8 +439,6 @@ html.desk.pn-dark .mmenu .drop a { color: var(--pn-text); }
 .settings .rule b { color: var(--pn-text); font-weight: 600; }
 .settings .rule .del { margin-left: auto; border: 0; background: none; color: var(--pn-text3); cursor: pointer; font-size: 12px; }
 .settings .mode { cursor: pointer; }
-.settings .confirm { display: flex; align-items: center; gap: 10px; margin: 2px 0 6px; padding: 8px 10px; border-radius: 8px; background: var(--pn-sel); color: var(--pn-accent-text); font-size: 11px; }
-.settings .confirm .btns { margin-left: auto; }
 .panel .vol-row { display: flex; align-items: center; justify-content: space-between; }
 .panel .vol-row b { display: block; font-weight: 600; }
 .panel .vol-row small { color: var(--pn-text3); font-size: 11px; }

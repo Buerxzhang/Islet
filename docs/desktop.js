@@ -88,7 +88,7 @@
     range: "5 分", killed: new Set(), strategy: "自动", preset: "均衡", awake: "关闭", awakeUntil: 0, awakeScreen: false, quit: false,
   };
   // 设置窗口里的选项（演示用），改了实时反映到灵动岛
-  const SET = { page: "灵动岛", expanded: "music", float: true, leftmost: true, bg: "专辑色", other: true, collapse: "10 秒",
+  const SET = { page: "灵动岛", float: true, leftmost: true, bg: "专辑色", other: true, collapse: "10 秒",
     shape: "竖条", color: "专辑色", spin: true, buttons: true, sens: "标准", smooth: false, dist: "中", soft: "中",
     hidpi: false, theme: "跟随系统", login: false, rate: "1 秒", autoUpdate: true,
     fanBasis: "平均温度", netMode: "自动", netUnit: "MB/s", btAlert: true, btLevel: "20%",
@@ -97,7 +97,7 @@
     rules: [{ kind: "温度", th: 95, min: 1, on: true }, { kind: "CPU", th: 90, min: 3, on: false }],
     split: true, metrics: true, btSound: true,   // 分体胶囊、“系统指标”模块整组开关、低电量提示音
     // 默认值和软件在刘海屏 MacBook 上新装时一致：悬浮、分体，只显示 CPU、内存、温度、网速；
-    // 其余在“未显示”里，可以拖出来，也可以右键「显示内容」勾选
+    // 其余在“显示内容”里关着，可以打开开关，也可以右键「显示内容」勾选
     order: ["music", "cpu", "gpu", "fps", "mem", "disk", "pwr", "temp", "fan", "net", "bt"], hidden: new Set(["gpu", "fps", "disk", "pwr", "fan"]) };
   let settingsReady = false;
   const tracks = [
@@ -186,7 +186,7 @@
   const onIsland = (id) => !SET.hidden.has(id) && (isModule(id) || SET.metrics);
   let lastArrange = "";
   function arrangeIsland(musicCollapsed) {
-    const ids = SET.order.filter((id) => onIsland(id) && !(id === "music" && musicCollapsed));
+    const ids = (SET.split ? grouped(SET.order) : SET.order).filter((id) => onIsland(id) && !(id === "music" && musicCollapsed));
     const key = ids.join(",") + (SET.split ? "|split" : "");
     if (key === lastArrange) return;
     lastArrange = key;
@@ -327,20 +327,26 @@
   function chart(series, colors, fills) {
     const w = 276, hgt = 56, max = Math.max(...series.flat(), 1) * 1.15;
     let out = `<svg class="chart" viewBox="0 0 ${w} ${hgt}" preserveAspectRatio="none">`;
+    // 颜色可以是 CSS 变量（压力色随深浅色变），所以用 style 而不是属性；fills[k] 为真时画同色浅底
     series.forEach((arr, k) => {
       const d = chartPath(arr, max, w, hgt);
-      if (fills[k]) out += `<path d="${d} L${w} ${hgt} L0 ${hgt} Z" fill="${fills[k]}"/>`;
-      out += `<path d="${d}" fill="none" stroke="${colors[k]}" stroke-width="1.4" stroke-linejoin="round"/>`;
+      if (fills[k]) out += `<path d="${d} L${w} ${hgt} L0 ${hgt} Z" style="fill:${colors[k]};fill-opacity:.16"/>`;
+      out += `<path d="${d}" fill="none" style="stroke:${colors[k]}" stroke-width="1.4" stroke-linejoin="round"/>`;
     });
     return out + `<line x1="0" y1="${hgt - 0.5}" x2="${w}" y2="${hgt - 0.5}" stroke="rgba(0,0,0,0.12)"/></svg>`;
   }
-  const gauge = (pct, big, small, dot) => {
+  // 圆环（和软件的 Ring 一致）：small 写成“单位 说明”时，单位跟在数字后面（小一号），下面只写说明，如 18% / 占用
+  const gauge = (pct, big, small, dot, color = "var(--pn-accent)") => {
     const r = 42, c = 2 * Math.PI * r;
-    const arc = dot
-      ? `<circle cx="48" cy="48" r="${r}" fill="none" style="stroke:var(--pn-accent)" stroke-width="9" stroke-linecap="round" stroke-dasharray="0.1 ${c}"/>`
-      : `<circle cx="48" cy="48" r="${r}" fill="none" style="stroke:var(--pn-accent)" stroke-width="9" stroke-linecap="round" stroke-dasharray="${(c * pct) / 100} ${c}"/>`;
-    return `<div class="gauge"><svg viewBox="0 0 96 96"><circle cx="48" cy="48" r="${r}" fill="none" style="stroke:var(--pn-inset)" stroke-width="9"/>${arc}</svg><div class="v"><b>${big}</b><small>${small}</small></div></div>`;
+    const len = dot ? 0.1 : Math.max((c * pct) / 100, c * 0.015);   // 0 时也留一点
+    const arc = `<circle cx="48" cy="48" r="${r}" fill="none" style="stroke:${color}" stroke-width="9" stroke-linecap="round" stroke-dasharray="${len} ${c}"/>`;
+    const parts = small.split(" "), unit = parts.length === 2 ? parts[0] : "", label = parts.length === 2 ? parts[1] : small;
+    const tight = unit === "%" || unit.startsWith("°");
+    return `<div class="gauge"><svg viewBox="0 0 96 96"><circle cx="48" cy="48" r="${r}" fill="none" style="stroke:var(--pn-inset)" stroke-width="9"/>${arc}</svg>` +
+      `<div class="v"><b>${big}${unit ? `<i>${tight ? "" : " "}${unit}</i>` : ""}</b><small>${label}</small></div></div>`;
   };
+  // 压力色（和软件的 Metric.level 同一套阈值）：CPU / GPU 70 / 90%，温度 80 / 95°，磁盘 85 / 95%；正常绿、偏高橙、很高红
+  const levelColor = (v, warn, alarm) => (v >= alarm ? "var(--pn-hot)" : v >= warn ? "var(--pn-warm)" : "var(--pn-cool)");
   const segctl = () => `<div class="segctl">${["5 分", "1 时", "24 时"].map((r) => `<button class="${r === S.range ? "sel" : ""}" data-range="${r}">${r}</button>`).join("")}</div>`;
   // 面板标题栏：右上角是设置（齿轮），和软件一致
   const header = (icon, title, extra = "") => `<div class="ph">${icon}<span class="t">${title}</span>${extra}<span class="gearbtn" data-act="settings" title="设置">${ICON.gear}</span></div>`;
@@ -355,36 +361,38 @@
   };
 
   const metricConf = {
-    cpu: { title: "CPU", color: "#1a9bd7", icon: '<svg viewBox="0 0 24 24" fill="none" stroke="#1a9bd7" stroke-width="1.8"><rect x="6" y="6" width="12" height="12" rx="2"/><path d="M9 2v4M15 2v4M9 18v4M15 18v4M2 9h4M2 15h4M18 9h4M18 15h4"/></svg>',
+    cpu: { title: "CPU", tint: "#0a84ff", level: () => levelColor(S.cpu, 70, 90), icon: '<svg viewBox="0 0 24 24" fill="none" stroke="#1a9bd7" stroke-width="1.8"><rect x="6" y="6" width="12" height="12" rx="2"/><path d="M9 2v4M15 2v4M9 18v4M15 18v4M2 9h4M2 15h4M18 9h4M18 15h4"/></svg>',
       gauge: () => [S.cpu, Math.round(S.cpu), "% 占用"], kv: () => [["核心", "4 性能 + 6 能效"], ["温度", deg(S.temp + 4)], ["功耗", S.pwr.toFixed(1) + " W"]],
       hist: "cpu", peak: (m) => "峰值 " + Math.round(m) + "%", rank: "CPU 占用", share: [38, 12, 6.4, 4.1, 1.2, 0.8, 0.5, 0.3], fmt: (v) => v + "%" },
-    gpu: { title: "GPU", color: "#1a9bd7", icon: '<svg viewBox="0 0 24 24" fill="none" stroke="#1a9bd7" stroke-width="1.8"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="9" cy="12" r="3"/><path d="M15 10h4M15 14h4"/></svg>',
+    gpu: { title: "GPU", tint: "#5e5ce6", level: () => levelColor(S.gpu, 70, 90), icon: '<svg viewBox="0 0 24 24" fill="none" stroke="#1a9bd7" stroke-width="1.8"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="9" cy="12" r="3"/><path d="M15 10h4M15 14h4"/></svg>',
       gauge: () => [S.gpu, Math.round(S.gpu), "% 占用"], kv: () => [["核心", "16 核"], ["温度", deg(S.temp - 3)], ["功耗", (S.pwr * 0.3).toFixed(1) + " W"]],
       hist: "gpu", peak: (m) => "峰值 " + Math.round(m) + "%", rank: "GPU 占用", share: [21, 6.2, 2.4, 1.1, 0.3, 0.2, 0.1, 0.1], fmt: (v) => v + "%" },
-    mem: { title: "内存", color: "#1a9bd7", icon: '<svg viewBox="0 0 24 24" fill="none" stroke="#1a9bd7" stroke-width="1.8"><rect x="3" y="7" width="18" height="10" rx="1.5"/><path d="M7 7v10M11 7v10M15 7v10M7 20v-3M17 20v-3"/></svg>',
+    mem: { title: "内存", tint: "#30d158", level: () => "var(--pn-cool)", icon: '<svg viewBox="0 0 24 24" fill="none" stroke="#1a9bd7" stroke-width="1.8"><rect x="3" y="7" width="18" height="10" rx="1.5"/><path d="M7 7v10M11 7v10M15 7v10M7 20v-3M17 20v-3"/></svg>',
       gauge: () => [S.mem / 16 * 100, S.mem.toFixed(1), "GB 已用"], kv: () => [["总量", "16 GB"], ["压力", "正常"], ["交换", "0.8 GB"]],
       hist: "mem", peak: (m) => "峰值 " + (m * 0.16).toFixed(1) + " GB", rank: "内存占用", share: [2.8, 0.9, 0.7, 0.6, 0.2, 0.18, 0.12, 0.05], fmt: (v) => v + " GB" },
-    pwr: { title: "功耗", color: "#1a9bd7", icon: '<svg viewBox="0 0 24 24" fill="none" stroke="#1a9bd7" stroke-width="1.8"><path d="M13 2L4 14h7l-1 8 9-12h-7z"/></svg>',
-      gauge: () => [S.pwr / 60 * 100, Math.round(S.pwr), "瓦"], kv: () => [["峰值", "38 W"], ["温度", deg(S.temp)], ["风扇", Math.round(S.fan) + " 转"]],
+    pwr: { title: "功耗", tint: "#ffb800", icon: '<svg viewBox="0 0 24 24" fill="none" stroke="#1a9bd7" stroke-width="1.8"><path d="M13 2L4 14h7l-1 8 9-12h-7z"/></svg>',
+      gauge: () => [S.pwr / 60 * 100, Math.round(S.pwr), "W 功耗"], kv: () => [["峰值", "38 W"], ["温度", deg(S.temp)], ["风扇", Math.round(S.fan) + " 转"]],
       hist: "pwr", peak: (m) => "峰值 " + Math.round(m) + " W", rank: "应用功耗", share: [6.1, 2.2, 1.4, 0.9, 0.2, 0.15, 0.1, 0.05], fmt: (v) => v + " W" },
-    disk: { title: "磁盘", icon: '<svg viewBox="0 0 24 24" fill="none" stroke="#1a9bd7" stroke-width="1.8"><rect x="3" y="6" width="18" height="12" rx="2"/><path d="M7 14h.01M11 14h6"/></svg>',
+    disk: { title: "磁盘", tint: "#8e8e93", level: () => levelColor(S.diskUsed, 85, 95), icon: '<svg viewBox="0 0 24 24" fill="none" stroke="#1a9bd7" stroke-width="1.8"><rect x="3" y="6" width="18" height="12" rx="2"/><path d="M7 14h.01M11 14h6"/></svg>',
       gauge: () => [S.diskUsed, S.diskUsed, "% 已用"], kv: () => [["可用", "245 GB"], ["读取", S.diskRead.toFixed(1) + " MB/s"], ["写入", S.diskWrite.toFixed(1) + " MB/s"]],
-      hist: "disk", peak: (m) => "峰值 " + m.toFixed(1) + " MB/s", rank: "磁盘读写", two: ["读取", "写入"], share: [[42, 8], [12, 2], [6, 3], [3, 1], [2, 0.5], [1, 0.2], [0.5, 0.1], [0.2, 0]], fmt: (v) => v + "MB" },
-    temp: { title: "温度", icon: '<svg viewBox="0 0 24 24" fill="none" stroke="#1a9bd7" stroke-width="1.8"><path d="M14 14.8V4a2 2 0 0 0-4 0v10.8a4 4 0 1 0 4 0z"/></svg>',
+      hist: "disk", peak: (m) => "峰值 " + m.toFixed(1) + " MB/s", rank: "磁盘读写", two: ["读取", "写入"], share: [[42, 8], [12, 2], [6, 3], [3, 1], [2, 0.5], [1, 0.2], [0.5, 0.1], [0.2, 0]], fmt: (v) => v + " MB" },
+    temp: { title: "温度", tint: "#ff9f0a", level: () => levelColor(S.temp, 80, 95), icon: '<svg viewBox="0 0 24 24" fill="none" stroke="#1a9bd7" stroke-width="1.8"><path d="M14 14.8V4a2 2 0 0 0-4 0v10.8a4 4 0 1 0 4 0z"/></svg>',
       gauge: () => [S.temp / 110 * 100, deg(S.temp).replace("°", ""), "° 平均"], kv: () => [["最热", deg(S.temp + 7) + " CPU 性能核"], ["CPU", deg(S.temp + 4)], ["GPU", deg(S.temp - 3)]],
       hist: "temp", peak: (m) => "最高 " + deg(m) },
-    fps: { title: "帧率", icon: '<svg viewBox="0 0 24 24" fill="none" stroke="#1a9bd7" stroke-width="1.8"><path d="M4 16a8 8 0 1 1 16 0"/><path d="M12 16l4-5"/></svg>',
-      gauge: () => [S.fps / 120 * 100, Math.round(S.fps), "帧 / 秒"], kv: () => [["屏幕", "内建显示器"], ["刷新率", "120 Hz"], ["状态", "测量中"]],
+    fps: { title: "帧率", tint: "#ff375f", icon: '<svg viewBox="0 0 24 24" fill="none" stroke="#1a9bd7" stroke-width="1.8"><path d="M4 16a8 8 0 1 1 16 0"/><path d="M12 16l4-5"/></svg>',
+      gauge: () => [S.fps / 120 * 100, Math.round(S.fps), "fps 帧率"], kv: () => [["屏幕", "内建显示器"], ["刷新率", "120 Hz"], ["状态", "测量中"]],
       hist: "fps", peak: (m) => "峰值 " + Math.round(m) + " 帧" },
-    fan: { title: "风扇", color: "#1b8a3e", icon: '<svg viewBox="0 0 24 24" fill="none" stroke="#1a9bd7" stroke-width="1.8"><circle cx="12" cy="12" r="1.5"/><path d="M12 10.5C11 6 12 3 15 3s3 4-3 7.5zM13.5 12c4.5-1 7.5 0 7.5 3s-4 3-7.5-3zM12 13.5c1 4.5 0 7.5-3 7.5s-3-4 3-7.5zM10.5 12C6 13 3 12 3 9s4-3 7.5 3z"/></svg>',
-      gauge: () => [(S.fan - 1000) / 40 + 10, Math.round(S.fan), "RPM"], kv: () => [["目标", String(Math.round(S.fan / 10) * 10)], ["区间", "1000–4900"], ["模式", S.strategy]],
-      hist: "fan", peak: (m) => "峰值 " + Math.round(m) + " RPM", rank: "发热来源", rankTrailing: "按功耗", limit: 3, share: [6.1, 2.2, 1.4, 0.9, 0.2, 0.15, 0.1, 0.05], fmt: (v) => v + " W" },
+    fan: { title: "风扇", tint: "#30b0c7", icon: '<svg viewBox="0 0 24 24" fill="none" stroke="#1a9bd7" stroke-width="1.8"><circle cx="12" cy="12" r="1.5"/><path d="M12 10.5C11 6 12 3 15 3s3 4-3 7.5zM13.5 12c4.5-1 7.5 0 7.5 3s-4 3-7.5-3zM12 13.5c1 4.5 0 7.5-3 7.5s-3-4 3-7.5zM10.5 12C6 13 3 12 3 9s4-3 7.5 3z"/></svg>',
+      gauge: () => [(S.fan - 1000) / 40 + 10, Math.round(S.fan), "转 当前转速"], kv: () => [["目标", String(Math.round(S.fan / 10) * 10)], ["区间", "1000–4900"], ["模式", S.strategy]],
+      hist: "fan", peak: (m) => "峰值 " + Math.round(m) + " 转", rank: "发热来源", rankTrailing: "按功耗", limit: 3, share: [6.1, 2.2, 1.4, 0.9, 0.2, 0.15, 0.1, 0.05], fmt: (v) => v + " W" },
   };
 
   function metricPanel(key) {
     const m = metricConf[key], [pct, big, small] = m.gauge();
     const data = ranged(S.hist[m.hist]);
-    let html = header(m.icon, m.title) + `<div class="pc"><div class="hero-row">${gauge(pct, big, small)}<dl class="kv">${m.kv().map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join("")}</dl></div>${segctl()}${chart([data], ["#1a9bd7"], ["rgba(26,155,215,0.16)"])}<div class="chart-foot"><span></span><span>${m.peak(Math.max(...data))}</span></div></div>`;
+    // 有压力的项（CPU、GPU、内存、磁盘、温度）圆环和走势线按压力变色，其他用这一项的固定颜色；标题图标用固定颜色
+    const color = m.level ? m.level() : m.tint;
+    let html = header(m.icon.replaceAll("#1a9bd7", m.tint), m.title) + `<div class="pc"><div class="hero-row">${gauge(pct, big, small, false, color)}<dl class="kv">${m.kv().map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join("")}</dl></div>${segctl()}${chart([data], [color], [true])}<div class="chart-foot"><span></span><span>${m.peak(Math.max(...data))}</span></div></div>`;
     if (key === "fan") {
       html += `<div class="sec">硬件温度<small>调速依据：${SET.fanBasis} ${deg(SET.fanBasis === "最高温度" ? S.temp + 7 : S.temp)}</small></div><div class="pc rows">${[["CPU 性能核", S.temp + 6], ["CPU 能效核", S.temp - 2], ["GPU", S.temp - 3], ["内存", 41], ["硬盘", 38]].map(([n, v]) => `<div class="r"><span>${n}</span><span>${deg(v)}</span></div>`).join("")}</div>`;
       const PRESETS = { 静音: "75℃ 以下几乎不介入，温度换噪音", 均衡: "60℃ 起提速，90℃ 全速", 性能: "35℃ 起就给基础转速，优先压温" };
@@ -431,9 +439,9 @@
     const max = flows[0][0];
     const kb = (v) => fmtBytes(v).replace(" ", "");
     const big = fmtRateLong(S.down).split(" ");
-    return header('<svg viewBox="0 0 24 24" fill="none" stroke="#1a9bd7" stroke-width="2"><path d="M7 20V4M3 8l4-4 4 4M17 4v16M13 16l4 4 4-4"/></svg>', "网速") +
-      `<div class="pc"><div class="hero-row">${gauge(0, big[0], big[1] + " 下载", true)}<dl class="kv"><dt>上传</dt><dd>${fmtRateLong(S.up)}</dd><dt>今日</dt><dd>${fmtBytes(S.today)}</dd><dt>本月</dt><dd>${fmtBytes(S.month)}</dd></dl></div>${segctl()}` +
-      `${chart([down, up], ["#1a9bd7", "#1b8a3e"], ["rgba(26,155,215,0.16)", null])}<div class="chart-foot"><span class="legend"><i style="background:#1a9bd7"></i>下载 <i style="background:#1b8a3e;margin-left:8px"></i>上传</span><span>峰值 ${fmtRateLong(Math.max(...down))}</span></div></div>` +
+    return header('<svg viewBox="0 0 24 24" fill="none" stroke="#0a84ff" stroke-width="2"><path d="M7 20V4M3 8l4-4 4 4M17 4v16M13 16l4 4 4-4"/></svg>', "网速") +
+      `<div class="pc"><div class="hero-row">${gauge(0, big[0], big[1] + " 下载", true, "#0a84ff")}<dl class="kv"><dt>上传</dt><dd>${fmtRateLong(S.up)}</dd><dt>今日</dt><dd>${fmtBytes(S.today)}</dd><dt>本月</dt><dd>${fmtBytes(S.month)}</dd></dl></div>${segctl()}` +
+      `${chart([down, up], ["#0a84ff", "var(--pn-cool)"], [true, false])}<div class="chart-foot"><span class="legend"><i style="background:#0a84ff"></i>下载 <i style="background:var(--pn-cool);margin-left:8px"></i>上传</span><span>峰值 ${fmtRateLong(Math.max(...down))}</span></div></div>` +
       `<div class="sec">连接</div><div class="pc rows"><div class="r"><span>公网 IP</span><span>203.0.113.24</span></div><div class="r"><span>Wi-Fi</span><span>Studio-5G · 信号强（-48 dBm）</span></div><div class="r"><span>延迟</span><span>${16 + Math.round(Math.random() * 6)} ms</span></div></div>` +
       `<div class="sec">应用流量</div><div class="pc"><div class="rank-h two"><span>应用</span><span class="num">↓ 下载</span><span class="num">↑ 上传</span></div>${liveApps().slice(0, +SET.rank).map((a) => { const i = apps.indexOf(a); return rankRow(a, (flows[i][0] / max) * 100, [kb(flows[i][0]), kb(flows[i][1])]); }).join("")}</div>` +
       footer("采样 23 ms");
@@ -544,15 +552,21 @@
 
 
   // ---------- 设置窗口：照软件里的 SettingsView 排版（侧栏 190、内容边距 22、卡片 12、行内图标 30）----------
-  // 改动实时作用到菜单栏的灵动岛；“显示在岛上”可以拖动排序、拖到“未显示”隐藏
+  // 改动实时作用到菜单栏的灵动岛；“显示内容”用开关显示 / 隐藏，按住拖动调整顺序
   const win = h(`<section class="win settings closed" id="settings"><div class="tb"><span class="tl r"></span><span class="tl y"></span><span class="tl g"></span><span class="ttl">islet 设置</span></div><div class="wb"><nav class="side"></nav><div class="sep-v"></div><div class="content"></div></div></section>`);
   $("main.desktop").appendChild(win);
-  const PAGES = [["灵动岛", "#5e5ce6", '<rect x="3" y="8" width="18" height="8" rx="4" fill="#fff" stroke="none"/>'],
+  // 侧栏分三组：灵动岛和它的各个模块 / 扩展功能、通用 / 关于（和软件的 SettingsPage.groups 一致）
+  const PAGES = [["灵动岛", "#5e5ce6", '<rect x="3" y="8" width="18" height="8" rx="4"/>'],
+    ["音乐", "#ff375f", '<path d="M5 10v4M9 7v10M13 4v16M17 8v8M21 11v2"/>'],
+    ["系统指标", "#30d158", '<path d="M4 16a8 8 0 1 1 16 0"/><path d="M12 16l3-4"/>'],
+    ["风扇", "#30b0c7", '<circle cx="12" cy="12" r="1.5"/><path d="M12 10.5C11 6 12 3 15 3s3 4-3 7.5zM13.5 12c4.5-1 7.5 0 7.5 3s-4 3-7.5-3zM12 13.5c1 4.5 0 7.5-3 7.5s-3-4 3-7.5zM10.5 12C6 13 3 12 3 9s4-3 7.5 3z"/>'],
+    ["蓝牙电量", "#0a84ff", '<path d="M8.5 8.5a5 5 0 0 0 0 7M15.5 8.5a5 5 0 0 1 0 7M5.5 5.5a9 9 0 0 0 0 13M18.5 5.5a9 9 0 0 1 0 13"/><circle cx="12" cy="12" r="1.3"/>'],
     ["扩展功能", "#bf5af2", '<path d="M10 4h4v3a2 2 0 1 0 0 0h3v4h-1a2 2 0 1 0 0 4h1v4h-4v-1a2 2 0 1 0-4 0v1H6v-4h1a2 2 0 1 0 0-4H6V7h4z" fill="#fff" stroke="none"/>'],
     ["通用", "#8e8e93", '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>'],
-    ["关于", "#ff9f0a", '<circle cx="12" cy="12" r="8" fill="#fff" stroke="none"/><path d="M12 11v5M12 8h.01" stroke="#ff9f0a"/>']];
-  // 图标块：和软件的 IconTile 一样，上浅下深的单色渐变、圆角 0.26
-  const tile = (color, path, size = 30) => `<span class="tile" style="background:linear-gradient(180deg, color-mix(in srgb, ${color} 85%, #fff), ${color});width:${size}px;height:${size}px;border-radius:${(size * 0.26).toFixed(1)}px"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">${path}</svg></span>`;
+    ["关于", "#ff9f0a", '<circle cx="12" cy="12" r="8"/><path d="M12 11v5M12 8h.01"/>']];
+  const PAGE_SEP = new Set([5, 7]);   // 这几页前面画分隔线
+  // 图标：和软件的 IconTile、面板标题一样，只画彩色线条图标、不带底块（原来白色的填充改成同色）
+  const tile = (color, path, size = 30) => `<span class="tile" style="color:${color};width:${size}px;height:${size}px"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${path.replaceAll("#fff", "currentColor")}</svg></span>`;
   const tg = (key) => `<span class="tg${SET[key] ? " on" : ""}" data-set="${key}"></span>`;
   const vis = (id) => `<span class="tg${SET.hidden.has(id) ? "" : " on"}" data-vis="${id}"></span>`;
   const sg = (key, opts, width) => `<div class="sg" style="width:${width}px">${opts.map((o) => `<button data-set="${key}" data-v="${o}" class="${SET[key] === o ? "sel" : ""}">${o}</button>`).join("")}</div>`;
@@ -566,19 +580,18 @@
     ["gpu", "GPU", "#5e5ce6", '<path d="M12 3l9 5-9 5-9-5zM3 13l9 5 9-5"/>'],
     ["fps", "帧率", "#ff375f", '<path d="M4 17a8 8 0 1 1 16 0"/><path d="M12 17l4.5-5"/>'],
     ["mem", "内存", "#30d158", '<rect x="3" y="7" width="18" height="10" rx="2"/><path d="M7 7v10M12 7v10M17 7v10"/>'],
-    ["disk", "磁盘", "#8e8e93", '<rect x="3" y="6" width="18" height="12" rx="2.5" fill="#fff" stroke="none"/><circle cx="7" cy="14.5" r="1.1" fill="#8e8e93" stroke="none"/>'],
-    ["pwr", "功耗", "#ffb800", '<path d="M13 2L4 14h7l-1 8 9-12h-7z" fill="#fff" stroke="none"/>'],
+    ["disk", "磁盘", "#8e8e93", '<rect x="3" y="6" width="18" height="12" rx="2.5"/><path d="M7 14.5h.01"/>'],
+    ["pwr", "功耗", "#ffb800", '<path d="M13 2L4 14h7l-1 8 9-12h-7z"/>'],
     ["temp", "温度", "#ff9f0a", '<path d="M14 14.8V4a2 2 0 0 0-4 0v10.8a4 4 0 1 0 4 0z"/>'],
     ["fan", "风扇", "#30b0c7", '<circle cx="12" cy="12" r="1.5"/><path d="M12 10.5C11 6 12 3 15 3s3 4-3 7.5zM13.5 12c4.5-1 7.5 0 7.5 3s-4 3-7.5-3zM12 13.5c1 4.5 0 7.5-3 7.5s-3-4 3-7.5zM10.5 12C6 13 3 12 3 9s4-3 7.5 3z"/>'],
     ["net", "网速", "#0a84ff", '<path d="M7 20V4M3 8l4-4 4 4M17 4v16M13 16l4 4 4-4"/>'],
-    ["bt", "蓝牙电量", "#0a84ff", '<path d="M4.5 14v-2a7.5 7.5 0 0 1 15 0v2"/><rect x="3.5" y="13" width="4" height="6.5" rx="1.5"/><rect x="16.5" y="13" width="4" height="6.5" rx="1.5"/>']];
+    ["bt", "蓝牙电量", "#0a84ff", '<path d="M8.5 8.5a5 5 0 0 0 0 7M15.5 8.5a5 5 0 0 1 0 7M5.5 5.5a9 9 0 0 0 0 13M18.5 5.5a9 9 0 0 1 0 13"/><circle cx="12" cy="12" r="1.3"/>']];
   const itemInfo = Object.fromEntries(ITEMS.map(([id, name, color, path]) => [id, { name, color, path }]));
-  const DEFAULT_ORDER = ITEMS.map(([id]) => id);
   const DEFAULT_SET = JSON.parse(JSON.stringify({ ...SET, hidden: [...SET.hidden] }));
 
-  // 和软件一样：只有音乐、风扇、网速、蓝牙电量有展开的设置；其他项点了没有展开
+  // 各模块自己的设置（和软件一样放在左侧单独的页里：音乐、系统指标里的网速 / 温度 / 帧率、风扇、蓝牙电量）
   function detailOf(id) {
-    const d = (...rows) => `<div class="detail">${rows.join("")}</div>`;
+    const d = (...rows) => join(...rows);
     switch (id) {
       case "music": return d(row("其他程序的声音", "游戏、剪辑软件等也显示", tg("other")), row("停止播放后收起", "", sg("collapse", ["立即", "10 秒", "不隐藏"], 220)),
         row("形状", "", sg("shape", ["竖条", "点阵"], 190)), row("颜色", "", sg("color", ["专辑色", "图标色", "白色"], 220)),
@@ -599,16 +612,39 @@
       default: return "";
     }
   }
-  const hasDetail = (id) => ["music", "fan", "net", "bt", "temp", "fps"].includes(id);
+  const PAGE_OF = { music: "音乐", net: "系统指标", temp: "系统指标", fps: "系统指标", fan: "风扇", bt: "蓝牙电量" };
+  const pageFns = {
+    音乐: () => section("频谱", detailOf("music")),
+    系统指标: () => section("网速", detailOf("net")) + section("温度", detailOf("temp")) + section("帧率", detailOf("fps")),
+    风扇: () => section("调速", detailOf("fan")),
+    蓝牙电量: () => section("提醒", detailOf("bt")),
+  };
 
-  function itemRow(id) {
-    const it = itemInfo[id], open = SET.expanded === id && hasDetail(id);
-    return `<div class="item${drag && drag.id === id ? " dragging" : ""}" data-item="${id}"><span class="chev${hasDetail(id) ? "" : " none"}${open ? " open" : ""}"><svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg></span>${tile(it.color, it.path)}<span class="nm">${it.name}</span><span class="grip" title="拖动调整顺序或显示 / 隐藏"><svg viewBox="0 0 24 24"><path d="M5 8h14M5 12h14M5 16h14"/></svg></span></div>` + (open ? detailOf(id) : "");
+  // 显示内容的顺序：只存一份 SET.order。分体时三个模块按各自（指标取第一个）出现的先后排，指标连在一起；合并时按原样
+  const MODULES = ["music", "metrics", "bt"];
+  const modulesOf = (order) => order.reduce((a, id) => { const m = isModule(id) ? id : "metrics"; if (!a.includes(m)) a.push(m); return a; }, []);
+  const metricsOf = (order) => order.filter((id) => !isModule(id));
+  const flatten = (mods, mets) => mods.flatMap((m) => (m === "metrics" ? mets : [m]));
+  const grouped = (order) => flatten(modulesOf(order), metricsOf(order));
+  const SUBS = { music: "播放时展开封面和频谱", metrics: "CPU、内存、温度、网速等，在下面逐项选择", bt: "耳机、键盘、鼠标的电量圆环" };
+  const METRICS_TILE = ["系统指标", "#30d158", '<path d="M4 16a8 8 0 1 1 16 0"/><path d="M12 16l3-4"/>'];
+  // 一行：图标、名称（模块带说明），右侧是显示开关和拖动把手；grp 决定能和谁换位置
+  function itemRow(id, grp, compact) {
+    const it = id === "metrics" ? { name: METRICS_TILE[0], color: METRICS_TILE[1], path: METRICS_TILE[2] } : itemInfo[id];
+    const on = id === "metrics" ? SET.metrics : !SET.hidden.has(id);
+    const sw = id === "metrics" ? tg("metrics") : vis(id);
+    return `<div class="item${on ? "" : " off"}${drag && drag.id === id ? " dragging" : ""}" data-item="${id}" data-grp="${grp}">${tile(it.color, it.path, compact ? 22 : 30)}` +
+      `<span class="nm">${it.name}${!compact && SUBS[id] ? `<small>${SUBS[id]}</small>` : ""}</span>${sw}<span class="grip" title="按住拖动调整顺序"><svg viewBox="0 0 24 24"><path d="M5 8h14M5 12h14M5 16h14"/></svg></span></div>`;
   }
-  const shownIds = () => SET.order.filter((id) => !SET.hidden.has(id));
-  const hiddenIds = () => SET.order.filter((id) => SET.hidden.has(id));
-  function listCard(ids, empty) {
-    return `<div class="card list">${ids.length ? ids.map(itemRow).join('<div class="div"></div>') : `<div class="empty">${empty}</div>`}</div>`;
+  function displayList() {
+    if (SET.split) {
+      // 分体：每张卡片是一个小胶囊；系统指标卡片里列出各项指标，只在卡片里排序
+      return modulesOf(SET.order).map((m) => `<div class="card list">${itemRow(m, "mod", false)}` +
+        (m === "metrics" ? `<div class="mets${SET.metrics ? "" : " off"}">${metricsOf(SET.order).map((id) => '<div class="div"></div>' + itemRow(id, "met", true)).join("")}</div>` : "") + `</div>`).join("");
+    }
+    // 合并：一个平铺列表，音乐、蓝牙、各项指标任意排序；没有“系统指标”整组行，整组关着时在上面提示
+    return (SET.metrics ? "" : '<p class="hint">系统指标已整组隐藏 · <a href="#" data-set="metrics">打开</a></p>') +
+      `<div class="card list">${SET.order.map((id) => itemRow(id, "all", true)).join('<div class="div"></div>')}</div>`;
   }
 
   function islandPage() {
@@ -618,41 +654,22 @@
         SET.float ? row("全屏时保持悬浮", "在支持的全屏视频和游戏上显示胶囊", tg("fullFloat"), tile("#0a84ff", '<path d="M4 9V4h5M20 15v5h-5M4 4l6 6M20 20l-6-6"/>')) : "",
         SET.float ? row("自由拖动", "按住胶囊拖到想放的位置", tg("freeDrag"), tile("#0a84ff", '<path d="M8 13V5.5a1.5 1.5 0 0 1 3 0V12M11 11.5V4a1.5 1.5 0 0 1 3 0v8M14 6a1.5 1.5 0 0 1 3 0v7M17 8.5a1.5 1.5 0 0 1 3 0V15a6 6 0 0 1-6 6h-1a6 6 0 0 1-5-2.7L5 14a1.5 1.5 0 0 1 2.5-1.7L8 13"/>')) : "",
         SET.float ? "" : row("始终在菜单栏最左侧", "关闭后可按住 ⌘ 拖到任意位置", tg("leftmost"), tile("#30d158", '<path d="M9 3h6l-1 6 3 3H7l3-3zM12 12v9"/>')),
-        row("分体胶囊", "音乐、系统指标、蓝牙电量三个模块各成一个小胶囊", tg("split"), tile("#bf5af2", '<rect x="3" y="7" width="8" height="10" rx="3"/><rect x="13" y="7" width="8" height="10" rx="3"/>')),
-        row("音乐", "播放时展开封面和频谱", vis("music"), tile(itemInfo.music.color, itemInfo.music.path)),
-        row("系统指标", "CPU、内存、温度、网速等，具体项目在下方选择", tg("metrics"), tile("#30d158", '<path d="M4 16a8 8 0 1 1 16 0"/><path d="M12 16l3-4"/>')),
-        row("蓝牙电量", "耳机、键盘、鼠标的电量圆环", vis("bt"), tile(itemInfo.bt.color, itemInfo.bt.path)),
+        row("胶囊形态", "分体：音乐、系统指标、蓝牙电量各成一个小胶囊；合并：连成一个",
+          `<div class="sg" style="width:140px"><button data-split="1" class="${SET.split ? "sel" : ""}">分体</button><button data-split="0" class="${SET.split ? "" : "sel"}">合并</button></div>`,
+          tile("#bf5af2", '<rect x="3" y="7" width="8" height="10" rx="3"/><rect x="13" y="7" width="8" height="10" rx="3"/>')),
         row("底色", "", sg("bg", ["专辑色", "渐变", "黑色"], 220)))) +
-      `<div class="section" data-list="1"><div class="sh">显示在岛上<small>按住拖动排序，拖到“未显示”即隐藏</small></div>${listCard(shownIds(), "把要显示的项拖到这里")}` +
-      (shownIds().some((id) => !isModule(id)) && SET.metrics ? "" : '<p class="hint">没有常驻指标时胶囊可能会消失，再次打开 islet 即可回到设置</p>') +
-      `<div class="sh hidden-h" data-marker="1">未显示</div>${listCard(hiddenIds(), "把不需要的项拖到这里")}` +
+      `<div class="section" data-list="1"><div class="sh">显示内容<small>${SET.split ? "每张卡片是一个小胶囊，按住拖动调整顺序" : "关掉开关即隐藏，按住拖动调整顺序"}</small></div>${displayList()}` +
+      (SET.order.some((id) => !isModule(id) && onIsland(id)) ? "" : '<p class="hint">没有常驻指标时胶囊可能会消失，再次打开 islet 即可回到设置</p>') +
       `<div class="reset"><a href="#" data-reset="1">恢复默认显示和顺序</a></div></div>`;
   }
-  // 显示器（和软件一致，以 27 寸 2K 屏为例）：开 HiDPI 后核心档位是 islet 补上的 133%、143%、160%（200% 字太大不列），推荐 133%；
-  // 原生和普通分辨率（放大显示、发虚）收在“更多分辨率”里。档位 id：尺寸，HiDPI 的加 @2x
+  // 显示器（和软件一致，以 27 寸 2K 屏为例）：开 HiDPI 后只列 islet 补上的 133%、143%、154%（200% 字太大不列），推荐 133%；
+  // 原生和普通分辨率（放大显示、发虚）不列。没开 HiDPI 时只有原生一档，不显示卡片。档位 id：尺寸，HiDPI 的加 @2x
   const NATIVE = "2560×1440";
-  const NORMAL = [[NATIVE, "原生"], ["1920×1080", "普通"], ["1600×900", "普通"], ["1280×720", "普通"]];
-  const coreModes = () => SET.hidpi ? [["1920×1080@2x", "推荐"], ["1792×1008@2x", "更大文字"], ["1600×900@2x", "更大文字"]] : [[NATIVE, "原生"]];
-  const allModes = () => [...coreModes(), ...NORMAL.filter(([m]) => !coreModes().some(([c]) => c === m))];
+  const modes = () => SET.hidpi ? [["1920×1080@2x", "推荐"], ["1792×1008@2x", "更大文字"], ["1664×936@2x", "更大文字"]] : [];
   const scaleOf = (m) => Math.round(2560 / +m.split("×")[0] * 1000) / 10 + "%";
-  const modes = () => {
-    const cur = curMode(), core = coreModes();
-    // 当前在用的总列出来
-    return SET.moreModes ? allModes() : core.some(([m]) => m === cur) ? core : [...core, allModes().find(([m]) => m === cur)];
-  };
   const defaultMode = () => (SET.hidpi ? "1920×1080@2x" : NATIVE);
-  const curMode = () => (pendingMode ? pendingMode.to : SET.mode || defaultMode());
+  const curMode = () => SET.mode || defaultMode();
   const modeSize = (m) => m.replace("@2x", "");
-  let pendingMode = null;
-  function chooseMode(m) {
-    if (m === curMode()) return;
-    clearInterval(pendingMode?.timer);
-    pendingMode = { from: SET.mode || defaultMode(), to: m, left: 15 };
-    pendingMode.timer = setInterval(() => {
-      if (--pendingMode.left <= 0) { clearInterval(pendingMode.timer); pendingMode = null; showToast("没有确认，已恢复原来的分辨率"); }
-      if (SET.page === "扩展功能") renderSettings();
-    }, 1000);
-  }
   // 显示器说明（和软件一致）：第一行“分辨率 模式 · 刷新率”；第二行没开 HiDPI 时说明开关作用，用 HiDPI 时说明实际按多大绘制
   function displaySubtitle() {
     const m = curMode(), hi = m.endsWith("@2x"), px = modeSize(m).split("×").map((n) => n * 2);
@@ -671,9 +688,7 @@
         SET.smooth ? row("反转滚动方向", "只影响鼠标滚轮，触控板不变", tg("reverse")) : "")) +
       section("显示器", join(
         row("外接显示器 · 27 英寸", displaySubtitle(), `<span class="btns"><span class="muted" style="font-size:13px;color:var(--pn-text2)">HiDPI 支持</span>${tg("hidpi")}</span>`, tile("#64d2ff", '<rect x="3" y="4" width="18" height="12" rx="1.5"/><path d="M9 20h6M12 16v4"/>')),
-        `<div class="modes">${modes().map(([m, tag]) => `<span class="mode${m === curMode() ? " sel" : ""}" data-mode="${m}"><b>${modeSize(m)}</b><small>${tag}</small><i>${scaleOf(m)}</i></span>`).join("")}</div>` +
-        (allModes().length > coreModes().length ? `<div class="modes-more"><a href="#" data-modes-more="1">${SET.moreModes ? "收起" : `更多分辨率（${allModes().length - coreModes().length}）`}</a></div>` : "") +
-        (pendingMode ? `<div class="confirm">已切换到 ${modeSize(pendingMode.to)}，${pendingMode.left} 秒内不确认会自动恢复<span class="btns">${btn("恢复", 'data-mode-revert="1"')}${btn("保留", 'data-mode-keep="1"')}</span></div>` : "")));
+        (modes().length ? `<div class="modes">${modes().map(([m, tag]) => `<span class="mode${m === curMode() ? " sel" : ""}" data-mode="${m}"><b>${modeSize(m)}</b><small>${tag}</small><i>${scaleOf(m)}</i></span>`).join("")}</div>` : "")));
   }
   // 各指标的默认阈值、可选阈值和单位（和软件的 AlertRule 一致）
   const RULE_KINDS = { CPU: [90, [50, 70, 80, 90, 95], "%"], GPU: [90, [50, 70, 80, 90, 95], "%"], 温度: [95, [70, 80, 85, 90, 95, 100], "°"],
@@ -707,10 +722,10 @@
   }
 
   function renderSettings() {
-    win.querySelector(".side").innerHTML = PAGES.map(([name, color, path], i) => (i === 3 ? '<div class="sep"></div>' : "") +
+    win.querySelector(".side").innerHTML = PAGES.map(([name, color, path], i) => (PAGE_SEP.has(i) ? '<div class="sep"></div>' : "") +
       `<div class="nav${SET.page === name ? " sel" : ""}" data-page="${name}">${tile(color, path, 24)}<span>${name}</span>${name === "关于" ? "<small>v1.3.5</small>" : ""}</div>`).join("");
     const content = win.querySelector(".content"), scroll = content.scrollTop;
-    content.innerHTML = `<h3>${SET.page}</h3>` + { 灵动岛: islandPage, 扩展功能: extPage, 通用: generalPage, 关于: aboutPage }[SET.page]();
+    content.innerHTML = `<h3>${SET.page}</h3>` + { 灵动岛: islandPage, 扩展功能: extPage, 通用: generalPage, 关于: aboutPage, ...pageFns }[SET.page]();
     content.scrollTop = scroll;
   }
   // 设置窗口和软件一样固定 720 宽（不再跟着岛变宽）
@@ -718,17 +733,13 @@
     win.style.width = Math.min(720, desk.clientWidth - 40) + "px";
   }
 
-  // 打开设置并定位到某一项：有展开项的展开，然后滚到这一行并闪一下
+  // 打开设置：从面板进来时直接到这一项所在的页（音乐、系统指标、风扇、蓝牙电量），其他到灵动岛页
   function openSettings(item, page = "灵动岛") {
-    SET.page = page;
-    if (item) SET.expanded = item;
+    SET.page = (item && PAGE_OF[item]) || page;
     renderSettings();
+    win.querySelector(".content").scrollTop = 0;
     openWin("settings");
     fitSettings();
-    const r = item && win.querySelector(`.item[data-item="${item}"]`);
-    if (!r) return;
-    win.querySelector(".content").scrollTo({ top: r.offsetTop - 80, behavior: "smooth" });
-    r.classList.remove("flash"); void r.offsetWidth; r.classList.add("flash");
   }
 
   function applyTheme() {
@@ -755,10 +766,7 @@
     if (visId) { if (SET.hidden.has(visId)) SET.hidden.delete(visId); else SET.hidden.add(visId); applySettingChange(); return; }
     if (e.target.closest("[data-clear]")) { S.today = 0; S.month = 0; showToast("今日和本月的流量统计已清零"); renderPanel(); return; }
     const mode = e.target.closest("[data-mode]")?.dataset.mode;
-    if (mode) { chooseMode(mode); renderSettings(); return; }
-    if (e.target.closest("[data-modes-more]")) { e.preventDefault(); SET.moreModes = !SET.moreModes; renderSettings(); return; }
-    if (e.target.closest("[data-mode-keep]")) { clearInterval(pendingMode.timer); SET.mode = pendingMode.to; pendingMode = null; renderSettings(); return; }
-    if (e.target.closest("[data-mode-revert]")) { clearInterval(pendingMode.timer); pendingMode = null; renderSettings(); return; }
+    if (mode) { SET.mode = mode; renderSettings(); return; }
     if (e.target.closest("[data-fan-edit]")) { showToast("温度曲线和规则在软件里可以拖动编辑"); return; }
     if (e.target.closest("[data-rule-add]")) { SET.rules.push({ kind: "温度", th: 95, min: 1, on: true }); renderSettings(); return; }
     const ruleOn = e.target.closest("[data-rule-on]")?.dataset.ruleOn;
@@ -784,10 +792,12 @@
       return;
     }
     if (dragMoved) return;   // 刚拖完松手，不当成点击
-    const t = e.target.closest("[data-set],[data-page],[data-item]");
+    const sp = e.target.closest("[data-split]");
+    if (sp) { SET.split = sp.dataset.split === "1"; applySettingChange(); return; }
+    const t = e.target.closest("[data-set],[data-page]");
     if (!t) return;
+    if (t.tagName === "A") e.preventDefault();
     if (t.dataset.page) { SET.page = t.dataset.page; win.querySelector(".content").scrollTop = 0; }
-    if (t.dataset.item) { if (!hasDetail(t.dataset.item)) return; SET.expanded = SET.expanded === t.dataset.item ? null : t.dataset.item; }
     if (t.dataset.set) SET[t.dataset.set] = t.dataset.v ?? !SET[t.dataset.set];
     if (t.dataset.set === "hidpi") SET.mode = null;
     applySettingChange();
@@ -803,11 +813,11 @@
     renderSettings();
   });
 
-  // 拖动排序：按住任意一行拖，蓝线是松手后的位置；拖到“未显示”下面即隐藏；拖出列表外松手取消
+  // 拖动排序：按住任意一行拖，蓝线是松手后的位置；只在同组里换位置；拖出列表外松手取消
   let drag = null, dragMoved = false;
   win.addEventListener("pointerdown", (e) => {
     const rowEl = e.target.closest(".item");
-    if (!rowEl || e.button !== 0) return;
+    if (!rowEl || e.button !== 0 || e.target.closest(".tg")) return;   // 点开关不算拖动
     drag = { id: rowEl.dataset.item, sx: e.clientX, sy: e.clientY, started: false, rowEl };
     dragMoved = false;
   });
@@ -831,7 +841,8 @@
     // 落点：除被拖动项外，中线在手指上方的行数（“未显示”标题也算一行）
     const lr = drag.list.getBoundingClientRect();
     drag.inside = e.clientX > lr.left - 30 && e.clientX < lr.right + 30 && e.clientY > lr.top - 30 && e.clientY < lr.bottom + 30;
-    const seq = [...drag.list.querySelectorAll(".item:not(.dragging), [data-marker]")];
+    // 落点只在同组里算：分体时模块和模块、指标和指标；合并时所有项
+    const seq = [...drag.list.querySelectorAll(`.item[data-grp="${drag.rowEl.dataset.grp}"]:not(.dragging)`)];
     let index = seq.length;
     for (let i = 0; i < seq.length; i++) {
       const rr = seq[i].getBoundingClientRect();
@@ -850,13 +861,11 @@
     if (!d.started) return;
     d.ghost.remove(); d.line.remove();
     if (d.inside) {
-      // 按落点重排：标题之前的是显示，之后的是隐藏
-      const ids = d.seq.map((el) => (el.dataset.marker ? "|" : el.dataset.item));
+      // 按落点重排同组的项；显示 / 隐藏只由开关管
+      const ids = d.seq.map((el) => el.dataset.item);
       ids.splice(d.index, 0, d.id);
-      const cut = ids.indexOf("|");
-      const shown = ids.slice(0, cut), hidden = ids.slice(cut + 1);
-      SET.order = [...shown, ...hidden];
-      SET.hidden = new Set(hidden);
+      const grp = d.rowEl.dataset.grp;
+      SET.order = grp === "all" ? ids : grp === "mod" ? flatten(ids, metricsOf(SET.order)) : flatten(modulesOf(SET.order), ids);
     }
     applySettingChange();
     setTimeout(() => { dragMoved = false; }, 0);
@@ -1018,7 +1027,7 @@
     setTimeout(() => { t.classList.remove("show"); setTimeout(() => t.remove(), 300); }, 2600);
   }
 
-  // ---------- 灵动岛右键菜单（和软件一致）：隐藏点到的指标 / 模块、显示内容、分体胶囊、悬浮显示 / 在菜单栏显示、平滑滚动、设置、关于、退出 ----------
+  // ---------- 灵动岛右键菜单（和软件一致）：隐藏点到的指标 / 模块、显示内容、分体 / 合并胶囊、悬浮显示 / 在菜单栏显示、设置、关于、退出 ----------
   // 只剩一项时不许再隐藏；岛上只剩指标时，“系统指标”模块也不许关，免得胶囊整个消失、连右键都点不到
   const ctx = h('<div class="ctxmenu"></div>');
   root.appendChild(ctx);
@@ -1047,8 +1056,7 @@
       `<hr><div class="hd">系统指标里的指标</div>` +
       SET.order.filter((id) => !isModule(id)).map((id) => item("vis", itemInfo[id].name, { on: !SET.hidden.has(id), off: !SET.metrics || (shown.includes(id) && lastOne), id })).join("");
     html += `<div class="has-sub"><i></i>显示内容<kbd>›</kbd><div class="sub">${sub}</div></div>` +
-      item("split", "分体胶囊", { on: SET.split }) + item("float", SET.float ? "在菜单栏显示" : "悬浮显示") + `<hr>` +
-      item("smooth", "平滑滚动", { on: SET.smooth }) + `<hr>` +
+      item("split", SET.split ? "合并胶囊" : "分体胶囊") + item("float", SET.float ? "在菜单栏显示" : "悬浮显示") + `<hr>` +
       item("settings", "设置…", { kbd: "⌘," }) + item("about", "关于 islet") + `<hr>` + item("quit", "退出 islet", { kbd: "⌘Q" });
     ctx.innerHTML = html;
     const r = island.getBoundingClientRect();
@@ -1058,17 +1066,6 @@
     ctx.classList.toggle("flip", left + 440 > window.innerWidth);   // 右边放不下时子菜单往左开
     ctx.classList.add("show");
   });
-  // 显示某个指标：按默认顺序插回去（放在默认顺序里排在它后面、且正在显示的第一个指标前面），不会跑到蓝牙后面
-  function showMetric(id) {
-    const rank = (x) => DEFAULT_ORDER.indexOf(x);
-    const order = SET.order.filter((x) => x !== id);
-    const shownMetric = (x) => !isModule(x) && onIsland(x);
-    let i = order.findIndex((x) => shownMetric(x) && rank(x) > rank(id));
-    if (i < 0) { const last = order.map(shownMetric).lastIndexOf(true); i = last >= 0 ? last + 1 : order.indexOf("bt"); }
-    order.splice(i < 0 ? order.length : i, 0, id);
-    SET.order = order;
-    SET.hidden.delete(id);
-  }
   ctx.addEventListener("click", (e) => {
     const el = e.target.closest("[data-m]"), m = el?.dataset.m;
     if (!m) return;
@@ -1079,11 +1076,11 @@
     if (m === "vis") {
       const id = el.dataset.id;
       if (id === "metrics") SET.metrics = !SET.metrics;
-      else if (SET.hidden.has(id)) { if (isModule(id)) SET.hidden.delete(id); else showMetric(id); }
+      else if (SET.hidden.has(id)) SET.hidden.delete(id);   // 隐藏的项留在原位，再显示时回到原来的位置
       else SET.hidden.add(id);
     }
-    if (["float", "smooth", "split"].includes(m)) SET[m] = !SET[m];
-    if (["vis", "float", "smooth", "split"].includes(m)) { renderIsland(); if (!win.classList.contains("closed")) renderSettings(); }
+    if (["float", "split"].includes(m)) SET[m] = !SET[m];
+    if (["vis", "float", "split"].includes(m)) { renderIsland(); if (!win.classList.contains("closed")) renderSettings(); }
   });
   document.addEventListener("pointerdown", (e) => { if (!e.composedPath().includes(ctx)) ctx.classList.remove("show"); });
 

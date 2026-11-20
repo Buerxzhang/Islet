@@ -183,7 +183,7 @@ enum WindowsExecutable {
         let sections = (0..<sectionCount).map { i in
             Section(rva: table.u32(i * 40 + 12), size: max(table.u32(i * 40 + 8), table.u32(i * 40 + 16)), offset: table.u32(i * 40 + 20))
         }
-        guard let section = sections.first(where: { resourceRVA >= $0.rva && resourceRVA < $0.rva + $0.size }) else { return (nil, nil) }
+        guard let section = sections.first(where: { resourceRVA >= $0.rva && UInt64(resourceRVA) < UInt64($0.rva) + UInt64($0.size) }) else { return (nil, nil) }
         let base = UInt64(section.offset) + UInt64(resourceRVA - section.rva)
         guard let res = bytes(base, Int(resourceSize)) else { return (nil, nil) }
 
@@ -203,7 +203,9 @@ enum WindowsExecutable {
             guard let typeDir = entries(0).first(where: { $0.id == type && $0.isDir }) else { return nil }
             let names = entries(typeDir.offset)
             guard var node = (id.map { want in names.first { $0.id == want } } ?? names.first) else { return nil }
-            while node.isDir { guard let next = entries(node.offset).first else { return nil }; node = next }
+            // 正常的资源树只有三层；损坏的文件里目录可能互相指向，限定层数免得死循环
+            for _ in 0..<8 where node.isDir { guard let next = entries(node.offset).first else { return nil }; node = next }
+            guard !node.isDir else { return nil }
             guard node.offset + 8 <= res.count else { return nil }
             let rva = res.u32(node.offset), size = Int(res.u32(node.offset + 4))
             let start = Int(rva) - Int(resourceRVA)

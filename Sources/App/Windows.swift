@@ -81,12 +81,17 @@ final class WindowManager {
 
 /// 设置窗口的分页（左侧导航）。
 enum SettingsPage: String, CaseIterable, Identifiable {
-    case menuBar, extensions, general, about
-    static let bottom: [SettingsPage] = [.about]
+    case menuBar, music, metrics, fan, bluetooth, extensions, general, about
+    /// 左侧导航分组：灵动岛和它的各个模块 / 其他功能 / 关于，组间画分隔线
+    static let groups: [[SettingsPage]] = [[.menuBar, .music, .metrics, .fan, .bluetooth], [.extensions, .general], [.about]]
     var id: String { rawValue }
     var title: String {
         switch self {
         case .menuBar: return "灵动岛"
+        case .music: return "音乐"
+        case .metrics: return "系统指标"
+        case .fan: return "风扇"
+        case .bluetooth: return "蓝牙电量"
         case .extensions: return "扩展功能"
         case .general: return "通用"
         case .about: return "关于"
@@ -94,15 +99,23 @@ enum SettingsPage: String, CaseIterable, Identifiable {
     }
     var symbol: String {
         switch self {
-        case .menuBar: return "capsule.fill"
-        case .extensions: return "puzzlepiece.extension.fill"
-        case .general: return "gearshape.fill"
-        case .about: return "info.circle.fill"
+        case .menuBar: return "capsule"
+        case .music: return "waveform"
+        case .metrics: return "gauge.with.dots.needle.33percent"
+        case .fan: return "fan"
+        case .bluetooth: return "dot.radiowaves.left.and.right"
+        case .extensions: return "puzzlepiece.extension"
+        case .general: return "gearshape"
+        case .about: return "info.circle"
         }
     }
     var tint: Color {
         switch self {
         case .menuBar: return Color(hex: 0x5E5CE6)
+        case .music: return Color(hex: 0xFF375F)
+        case .metrics: return Color(hex: 0x30D158)
+        case .fan: return Color(hex: 0x30B0C7)
+        case .bluetooth: return Color(hex: 0x0A84FF)
         case .extensions: return Color(hex: 0xBF5AF2)
         case .general: return Color(hex: 0x8E8E93)
         case .about: return Color(hex: 0xFF9F0A)
@@ -121,6 +134,7 @@ final class SettingsModel: ObservableObject {
     var onMetricOrder: () -> Void = {}
     var onFullScreenFloatingIsland: (Bool) -> Void = { _ in }
     var onFreeFloatingIsland: (Bool) -> Void = { _ in }
+    var onIslandScreen: (String) -> Void = { _ in }
     var onFloatingIsland: (Bool) -> Void = { _ in }
     var onKeepLeftmost: () -> Void = {}
     var onUnits: () -> Void = {}
@@ -128,10 +142,8 @@ final class SettingsModel: ObservableObject {
     @Published var stars: Int?
     @Published var update: UpdateChecker.State = .idle
     @Published var showDonate = false
-    /// 灵动岛页里展开了设置的项（music、bluetooth、cpu、network…）。
+    /// 风扇页里展开的编辑器（fanCurve、fanRules）。
     @Published var expanded: Set<String> = []
-    /// 打开设置时要滚到的项（滚到后清空）
-    @Published var scrollTarget: String?
     var onResetAll: () -> Void = {}
     /// 灵动岛各项的顺序；拖动时实时变化，松手后才保存并应用到菜单栏。
     @Published var islandOrder = IslandOrder.items
@@ -140,15 +152,15 @@ final class SettingsModel: ObservableObject {
     @Published var dragOffset: CGFloat = 0
     @Published var dragY: CGFloat = 0
     @Published var dragInside = true
-    /// 各行（以及“未显示”分隔标题、整个列表）在列表坐标里的位置，用来算落点。
+    /// 各行（以及整个列表）在列表坐标里的位置，用来算落点。
     var rowFrames: [String: CGRect] = [:]
-    static let hiddenMarker = "__hidden__"
     static let listMarker = "__list__"
 
     /// 某项当前是否显示在岛上。
     func isVisible(_ id: String) -> Bool {
         switch id {
         case "music": return SpectrumController.isEnabled
+        case "metrics": return Metric.groupShown
         case "bluetooth": return SoundController.showsBluetoothItem
         case "network": return SpeedSetting.direction.selection != 2
         default: return Self.metricSetting(id).map { $0.selection == 0 } ?? false
@@ -159,6 +171,7 @@ final class SettingsModel: ObservableObject {
     func setVisible(_ id: String, _ on: Bool) {
         switch id {
         case "music": SpectrumController.shared.setEnabled(on)
+        case "metrics": setMetricsShown(on); return
         case "bluetooth":
             UserDefaults.standard.set(on, forKey: "bluetoothItem")
             SoundController.shared.startBluetoothItem()
@@ -189,36 +202,38 @@ final class SettingsModel: ObservableObject {
     static func metricSetting(_ id: String) -> SpeedSetting? {
         Metric.allCases.first { "\($0)" == id }?.setting
     }
-    /// 显示组 + 分隔 + 未显示组，连成一条序列。
-    var sequence: [String] {
-        islandOrder.filter { isVisible($0) } + [Self.hiddenMarker] + islandOrder.filter { !isVisible($0) }
+    /// 模块（各成一个小胶囊）和“系统指标”里的指标，各自排序。
+    static let modules = ["music", "metrics", "bluetooth"]
+    var moduleOrder: [String] { IslandOrder.modules(islandOrder) }
+    var metricOrder: [String] { islandOrder.filter { !Self.modules.contains($0) } }
+    /// 被拖动项所在的组。分体时模块只和模块换位置、指标只和指标换；合体时所有项一起任意排。
+    func group(of id: String) -> [String] {
+        guard MetricsIslandView.splits else { return islandOrder }
+        return Self.modules.contains(id) ? moduleOrder : metricOrder
     }
 
-    /// 松手时会落到的位置：除被拖动项外，中线在手指上方的行数。
+    /// 松手时会落到的位置：同组其他项里，中线在手指上方的个数。
     var dropIndex: Int? {
         guard let dragging else { return nil }
-        let others = sequence.filter { $0 != dragging }
-        return others.filter { (rowFrames[$0]?.midY ?? .infinity) < dragY }.count
+        return group(of: dragging).filter { $0 != dragging && (rowFrames[$0]?.midY ?? .infinity) < dragY }.count
     }
 
-    /// 松手：在列表范围内就按落点调整顺序和显示 / 隐藏；拖出列表外则取消，一切照旧。
+    /// 松手：在列表范围内就按落点调整顺序；拖出列表外则取消。显示 / 隐藏只由开关管。
+    /// 分体时排过顺序，合体时穿插的位置会理顺（音乐、蓝牙回到指标两侧）。
     func endDrag() {
         defer {
             dragging = nil
             dragOffset = 0
         }
         guard let id = dragging, dragInside, let index = dropIndex else { return }
-        var others = sequence.filter { $0 != id }
-        others.insert(id, at: min(index, others.count))
-        guard let marker = others.firstIndex(of: Self.hiddenMarker) else { return }
-        let shown = Array(others[..<marker]), hidden = Array(others[(marker + 1)...])
-        let order = shown + hidden
-        let visible = shown.contains(id)
-        if order != islandOrder {
-            IslandOrder.save(order)
-            islandOrder = IslandOrder.items
-        }
-        if visible != isVisible(id) { setVisible(id, visible) }
+        var list = group(of: id).filter { $0 != id }
+        list.insert(id, at: min(index, list.count))
+        let order = !MetricsIslandView.splits ? list
+            : Self.modules.contains(id) ? IslandOrder.flatten(modules: list, metrics: metricOrder)
+            : IslandOrder.flatten(modules: moduleOrder, metrics: list)
+        guard order != islandOrder else { return }
+        IslandOrder.save(order)
+        islandOrder = IslandOrder.items
         onMetricOrder()
     }
 
@@ -305,13 +320,7 @@ struct SettingsView: View {
                 VStack(spacing: 0) {
                     // 不显示滚动条：接了鼠标时系统用常驻滚动条，占 17 点宽，而且刚打开时系统先报“悬浮”、过一会儿才改成常驻，
                     // 窗口宽度（跟着预览里的岛走）会因此跳一下。滚轮、触控板照常滚动
-                    if flat { page(p) } else {
-                        ScrollViewReader { proxy in
-                            ScrollView { page(p) }.scrollIndicators(.never)
-                                .onAppear { scroll(proxy) }
-                                .onChange(of: model.scrollTarget) { _, _ in scroll(proxy) }
-                        }
-                    }
+                    if flat { page(p) } else { ScrollView { page(p) }.scrollIndicators(.never) }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             }
@@ -324,10 +333,12 @@ struct SettingsView: View {
 
     private func sidebar(_ p: Palette) -> some View {
         VStack(alignment: .leading, spacing: 2) {
-            ForEach(SettingsPage.allCases.filter { !SettingsPage.bottom.contains($0) }) { page in sidebarItem(p, page) }
-            // “关于”紧跟在功能页下面，用分隔线隔开；不推到底部，窗口拉高时不会孤零零挂在最下面
-            Rectangle().fill(p.separator).frame(height: 1).padding(.horizontal, 8).padding(.vertical, 6)
-            ForEach(SettingsPage.bottom) { page in sidebarItem(p, page) }
+            // 分组之间画分隔线；“关于”紧跟在后面，不推到底部，窗口拉高时不会孤零零挂在最下面
+            ForEach(Array(SettingsPage.groups.enumerated()), id: \.offset) { index, group in
+                if index > 0 { Rectangle().fill(p.separator).frame(height: 1).padding(.horizontal, 8).padding(.vertical, 6) }
+                // 没有风扇的 Mac 不列“风扇”页
+                ForEach(group.filter { $0 != .fan || model.fanData != nil }) { page in sidebarItem(p, page) }
+            }
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 14)
@@ -341,10 +352,10 @@ struct SettingsView: View {
         return Button { model.page = page } label: {
             HStack(spacing: 10) {
                 IconTile(symbol: page.symbol, tint: page.tint, size: 24)
-                Text(page.title).font(selected ? Typo.bodyMedium : Typo.body).foregroundStyle(p.text)
+                Text(page.title).font(selected ? Typo.bodyMedium : Typo.settingsBody).foregroundStyle(p.text)
                 Spacer(minLength: 0)
                 if page == .about {
-                    Text("v" + (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "")).font(Typo.caption).foregroundStyle(p.text3)
+                    Text("v" + (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "")).font(Typo.settingsCaption).foregroundStyle(p.text3)
                 }
             }
             .padding(.horizontal, 8)
@@ -363,6 +374,13 @@ struct SettingsView: View {
             switch model.page {
             case .general: generalPage(p)
             case .menuBar: menuBarPage(p)
+            case .music: section(p, "频谱") { musicDetail(p) }
+            case .metrics:
+                section(p, "网速") { networkDetail(p) }
+                section(p, "温度") { temperatureDetail(p) }
+                section(p, "帧率") { fpsDetail(p) }
+            case .fan: section(p, "调速") { fanDetail(p) }
+            case .bluetooth: bluetoothPage(p)
             case .extensions: extensionsPage(p)
             case .about: aboutPage(p)
             }
@@ -425,7 +443,25 @@ struct SettingsView: View {
         }
     }
 
-    /// 灵动岛：位置、底色，以及岛上显示的内容（顺序与岛上一致，可展开各项设置）。
+    /// 悬浮胶囊显示在哪块屏：主屏幕（跟着系统的主显示器走），或固定某块屏。
+    /// 屏幕名称与“显示器”设置一致，带上主屏 / 扩展屏，同型号的两块屏也分得清。
+    private func islandScreenMenu() -> some View {
+        let screens = NSScreen.screens.enumerated().compactMap { index, screen in
+            AppDelegate.screenUUID(screen).map { ($0, "\(screen.localizedName)（\(index == 0 ? "主屏" : "扩展屏")）") }
+        }
+        let current = AppDelegate.islandScreen
+        let title = current == "main" ? "主屏幕" : screens.first { $0.0 == current }?.1 ?? "指定的屏幕（未连接）"
+        return Menu(title) {
+            Button("主屏幕") { model.onIslandScreen("main") }
+            Divider()
+            ForEach(screens, id: \.0) { uuid, name in
+                Button(name) { model.onIslandScreen(uuid) }
+            }
+        }
+        .frame(width: 160)
+    }
+
+    /// 灵动岛：位置、底色，以及岛上显示的内容（顺序与岛上一致）。各模块自己的设置在左侧单独的页里。
     @ViewBuilder private func menuBarPage(_ p: Palette) -> some View {
         section(p, "胶囊") {
             row(p, "悬浮显示", "将胶囊居中放在刘海或菜单栏下方；刘海屏默认开启", icon: "rectangle.on.rectangle", tint: Color(hex: 0x0A84FF)) {
@@ -440,6 +476,13 @@ struct SettingsView: View {
                 row(p, "自由拖动", "按住胶囊拖到想放的位置", icon: "hand.draw", tint: Color(hex: 0x0A84FF)) {
                     Toggle2(isOn: AppDelegate.freeFloatingIsland, onChange: model.onFreeFloatingIsland)
                 }
+                // 自由拖动时拖到哪块屏就在哪块屏；只有一块屏时不用选
+                if !AppDelegate.freeFloatingIsland, NSScreen.screens.count > 1 || AppDelegate.islandScreen != "main" {
+                    divider(p)
+                    row(p, "显示屏幕", "连接多块显示器时，胶囊显示在哪块屏幕上", icon: "display.2", tint: Color(hex: 0x0A84FF)) {
+                        islandScreenMenu()
+                    }
+                }
             } else {
                 row(p, "始终在菜单栏最左侧", "关闭后可按住 ⌘ 拖到任意位置", icon: "pin.fill", tint: Color(hex: 0x30D158)) {
                     Toggle2(isOn: AppDelegate.keepsLeftmost) { on in
@@ -450,20 +493,9 @@ struct SettingsView: View {
                 }
             }
             divider(p)
-            row(p, "分体胶囊", "音乐、系统指标、蓝牙电量三个模块各成一个小胶囊", icon: "square.split.2x1", tint: Color(hex: 0xBF5AF2)) {
-                Toggle2(isOn: MetricsIslandView.splits, onChange: model.setSplit)
-            }
-            divider(p)
-            row(p, "音乐", "播放时展开封面和频谱", icon: "waveform", tint: Color(hex: 0xFF375F)) {
-                Toggle2(isOn: model.isVisible("music")) { model.setVisible("music", $0) }
-            }
-            divider(p)
-            row(p, "系统指标", "CPU、内存、温度、网速等，具体项目在下方选择", icon: "gauge.with.dots.needle.33percent", tint: Color(hex: 0x30D158)) {
-                Toggle2(isOn: Metric.groupShown, onChange: model.setMetricsShown)
-            }
-            divider(p)
-            row(p, "蓝牙电量", "耳机、键盘、鼠标的电量圆环", icon: "headphones", tint: Color(hex: 0x0A84FF)) {
-                Toggle2(isOn: model.isVisible("bluetooth")) { model.setVisible("bluetooth", $0) }
+            row(p, "胶囊形态", "分体：音乐、系统指标、蓝牙电量各成一个小胶囊；合并：连成一个", icon: "square.split.2x1", tint: Color(hex: 0xBF5AF2)) {
+                Segmented(options: [(true, "分体"), (false, "合并")], selection: MetricsIslandView.splits, onSelect: model.setSplit)
+                    .frame(width: 140)
             }
             divider(p)
             SpectrumLookEditor(look: SpectrumLook.current, part: .backdrop) { look in
@@ -475,27 +507,59 @@ struct SettingsView: View {
         itemList(p)
     }
 
-    /// 显示 / 未显示两组连成一个列表：按住任意一行拖动，蓝线是松手后的位置，拖出列表外松手则取消。
+    /// 岛上显示的内容，形态跟着“分体胶囊”走：
+    /// 分体时三张卡片对应三个小胶囊，拖卡片标题换胶囊位置，指标只在自己的卡片里排；
+    /// 合体时一个平铺列表，音乐、蓝牙、各项指标任意排序。开关管显示 / 隐藏（关掉的留在原位）。
+    /// 拖动时蓝线是松手后的位置，拖出列表外松手则取消。
     private func itemList(_ p: Palette) -> some View {
-        let shown = model.islandOrder.filter { model.isVisible($0) }
-        let hidden = model.islandOrder.filter { !model.isVisible($0) }
+        let split = MetricsIslandView.splits
         return VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Text("显示在岛上").font(Typo.bodyMedium).foregroundStyle(p.text2)
+                Text("显示内容").font(Typo.bodyMedium).foregroundStyle(p.text2)
                 Spacer()
-                Text("按住拖动排序，拖到“未显示”即隐藏").font(Typo.caption).foregroundStyle(p.text3)
+                Text(split ? "每张卡片是一个小胶囊，按住拖动调整顺序" : "关掉开关即隐藏，按住拖动调整顺序")
+                    .font(Typo.settingsCaption).foregroundStyle(p.text3)
             }
-            Card(padding: 12) { itemRows(p, shown, empty: "把要显示的项拖到这里") }
+            if split {
+                ForEach(model.moduleOrder, id: \.self) { id in
+                    Card(padding: 12) {
+                        VStack(alignment: .leading, spacing: 0) {
+                            itemRow(p, id).gesture(dragGesture(id))
+                            if id == "metrics" { metricRows(p) }
+                        }
+                    }
+                    .background(frameReader(id))
+                    .opacity(model.dragging == id ? 0.25 : 1)
+                }
+            } else {
+                if !Metric.groupShown {
+                    // 分体时整组关掉了系统指标：合体时没有这一行，在这里说明并能直接打开
+                    HStack {
+                        Text("系统指标已整组隐藏").font(Typo.settingsCaption).foregroundStyle(p.text3)
+                        LinkButton(title: "打开") { model.setMetricsShown(true) }
+                    }
+                }
+                Card(padding: 12) {
+                    VStack(alignment: .leading, spacing: 0) {
+                        ForEach(Array(model.islandOrder.enumerated()), id: \.element) { index, id in
+                            let dimmed = !Metric.groupShown && !SettingsModel.modules.contains(id)
+                            VStack(alignment: .leading, spacing: 0) {
+                                if index > 0 { divider(p) }
+                                itemRow(p, id, compact: true)
+                            }
+                            .background(frameReader(id))
+                            .opacity(model.dragging == id ? 0.25 : dimmed ? 0.45 : 1)
+                            .disabled(dimmed)
+                            .gesture(dragGesture(id))
+                        }
+                    }
+                }
+            }
             if !Metric.allCases.contains(where: \.isShown) {
                 // 音乐、蓝牙只在播放 / 连接时出现，没有常驻指标时胶囊可能整个消失
                 Text("没有常驻指标时胶囊可能会消失，再次打开 islet 即可回到设置")
-                    .font(Typo.caption).foregroundStyle(p.text3)
+                    .font(Typo.settingsCaption).foregroundStyle(p.text3)
             }
-            Text("未显示").font(Typo.bodyMedium).foregroundStyle(p.text2).padding(.top, 8)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(frameReader(SettingsModel.hiddenMarker))
-            Card(padding: 12) { itemRows(p, hidden, empty: "把不需要的项拖到这里") }
-            // 列表的“恢复默认”放在整块末尾：只管显示哪些项和顺序
             LinkButton(title: "恢复默认显示和顺序", muted: true) {
                 guard confirmAlert("恢复岛上项目的默认显示？",
                                    "显示哪些项目和它们的顺序会按本机重新设置，其他设置不变。") else { return }
@@ -510,32 +574,22 @@ struct SettingsView: View {
         .overlay(alignment: .topLeading) { dragOverlay(p) }
     }
 
-    private func itemRows(_ p: Palette, _ ids: [String], empty: String) -> some View {
+    /// 分体时“系统指标”卡片里的各项指标，缩进到模块图标右侧；整组关掉时变淡、不能单独开关（各项的勾保留）。
+    private func metricRows(_ p: Palette) -> some View {
         VStack(alignment: .leading, spacing: 0) {
-            if ids.isEmpty {
-                Text(empty).font(Typo.caption).foregroundStyle(p.text3).frame(maxWidth: .infinity, minHeight: 36)
-            }
-            ForEach(Array(ids.enumerated()), id: \.element) { index, id in
+            ForEach(model.metricOrder, id: \.self) { id in
                 VStack(alignment: .leading, spacing: 0) {
-                    if index > 0 { divider(p) }
-                    itemRow(p, id)
-                        .id("item-\(id)")
-                        .background(frameReader(id))
-                        .opacity(model.dragging == id ? 0.25 : 1)
-                        .gesture(dragGesture(id))
-                    if model.expanded.contains(id), model.dragging != id { itemDetail(p, id) }
+                    divider(p)
+                    itemRow(p, id, compact: true)
                 }
+                .background(frameReader(id))
+                .opacity(model.dragging == id ? 0.25 : 1)
+                .gesture(dragGesture(id))
+                .padding(.leading, 40)
             }
         }
-    }
-
-    /// 滚到要定位的项：等这一帧布局完（展开的内容出现）再滚，项的标题行停在顶部附近。
-    private func scroll(_ proxy: ScrollViewProxy) {
-        guard let target = model.scrollTarget else { return }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-            withAnimation(.easeOut(duration: 0.25)) { proxy.scrollTo("item-\(target)", anchor: UnitPoint(x: 0.5, y: 0.08)) }
-            model.scrollTarget = nil
-        }
+        .opacity(Metric.groupShown ? 1 : 0.45)
+        .disabled(!Metric.groupShown)
     }
 
     private func frameReader(_ id: String) -> some View {
@@ -557,19 +611,20 @@ struct SettingsView: View {
     /// 拖动时：跟着手指的那一行 + 落点处的蓝线；拖出列表外时蓝线消失、行变淡，表示松手会取消。
     @ViewBuilder private func dragOverlay(_ p: Palette) -> some View {
         if let id = model.dragging, let frame = model.rowFrames[id] {
-            let others = model.sequence.filter { $0 != id }
+            let others = model.group(of: id).filter { $0 != id }
             let index = model.dropIndex ?? 0
             let lineY: CGFloat? = {
                 guard model.dragInside else { return nil }
-                if index < others.count, let next = model.rowFrames[others[index]] {
-                    return others[index] == SettingsModel.hiddenMarker ? next.minY - 2 : next.minY - 1
-                }
-                return others.last.flatMap { model.rowFrames[$0]?.maxY }.map { $0 + 1 }
+                // 分体时模块是一张张卡片，蓝线画在卡片之间的空隙里
+                let gap: CGFloat = MetricsIslandView.splits && SettingsModel.modules.contains(id) ? 4 : 1
+                if index < others.count, let next = model.rowFrames[others[index]] { return next.minY - gap }
+                return others.last.flatMap { model.rowFrames[$0]?.maxY }.map { $0 + gap }
             }()
             ZStack(alignment: .topLeading) {
                 // 浮起的行半透明，蓝线画在它上面，任何时候都看得见落点
-                itemRow(p, id)
-                    .frame(width: frame.width, height: frame.height)
+                itemRow(p, id, compact: !MetricsIslandView.splits || !SettingsModel.modules.contains(id))
+                    .padding(.horizontal, MetricsIslandView.splits && SettingsModel.modules.contains(id) ? 12 : 0)
+                    .frame(width: frame.width)
                     .background(RoundedRectangle(cornerRadius: 8).fill(p.card).shadow(color: .black.opacity(0.25), radius: 10, y: 4))
                     .opacity(model.dragInside ? 0.75 : 0.4)
                     .offset(x: frame.minX, y: frame.minY + model.dragOffset)
@@ -583,71 +638,57 @@ struct SettingsView: View {
         }
     }
 
-    private func itemInfo(_ id: String) -> (title: String, icon: String, tint: Color, hasDetail: Bool) {
+    private func itemInfo(_ id: String) -> (title: String, subtitle: String?, icon: String, tint: Color) {
         switch id {
-        case "music": return ("音乐", "waveform", Color(hex: 0xFF375F), true)
-        case "bluetooth": return ("蓝牙电量", "headphones", Color(hex: 0x0A84FF), true)
-        case "network": return ("网速", "arrow.up.arrow.down", Color(hex: 0x0A84FF), true)
+        case "music": return ("音乐", "播放时展开封面和频谱", "waveform", Color(hex: 0xFF375F))
+        case "metrics": return ("系统指标", "CPU、内存、温度、网速等，在下面逐项选择", "gauge.with.dots.needle.33percent", Color(hex: 0x30D158))
+        case "bluetooth": return ("蓝牙电量", "耳机、键盘、鼠标的电量圆环", "dot.radiowaves.left.and.right", Color(hex: 0x0A84FF))
+        case "network": return ("网速", nil, "arrow.up.arrow.down", Color(hex: 0x0A84FF))
         default:
             let setting = SettingsModel.metricSetting(id)
             let icon = setting.map(Self.metricIcon) ?? ("circle", Color.gray)
-            return (setting?.title ?? id, icon.0, icon.1, ["fan", "fps", "temperature"].contains(id))
+            return (setting?.title ?? id, nil, icon.0, icon.1)
         }
     }
 
-    /// 一行：展开箭头、图标、名称；右侧是拖动把手。整行都能拖。
-    private func itemRow(_ p: Palette, _ id: String) -> some View {
+    /// 一行：图标、名称，右侧是显示开关和拖动把手。整行都能拖。
+    /// compact：指标行、合体时的平铺列表，小图标、不带说明。
+    private func itemRow(_ p: Palette, _ id: String, compact: Bool = false) -> some View {
         let info = itemInfo(id)
-        let open = model.expanded.contains(id)
+        let module = !compact
+        let on = model.isVisible(id)
         return HStack(spacing: 10) {
-            Image(systemName: "chevron.right").font(.system(size: 10, weight: .bold)).foregroundStyle(p.text3)
-                .rotationEffect(.degrees(open ? 90 : 0))
-                .opacity(info.hasDetail ? 1 : 0)
-                .frame(width: 12)
-            IconTile(symbol: info.icon, tint: info.tint, size: 30)
-            Text(info.title).font(Typo.body).foregroundStyle(p.text)
+            IconTile(symbol: info.icon, tint: info.tint, size: module ? 30 : 22)
+                .opacity(on ? 1 : 0.45)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(info.title).font(Typo.settingsBody).foregroundStyle(on ? p.text : p.text3)
+                if module, let subtitle = info.subtitle { Text(subtitle).font(Typo.settingsCaption).foregroundStyle(p.text3) }
+            }
             Spacer(minLength: 8)
+            Toggle2(isOn: on) { value in
+                model.setVisible(id, value)
+                model.onMetricOrder()
+            }
             Image(systemName: "line.3.horizontal").font(.system(size: 13, weight: .medium)).foregroundStyle(p.text3)
                 .frame(width: 28, height: 30)
-                .help("拖动调整顺序或显示 / 隐藏")
+                .help("按住拖动调整顺序")
         }
-        .padding(.vertical, 6)
+        .padding(.vertical, module ? 6 : 3)
         .contentShape(Rectangle())
-        .onTapGesture {
-            guard info.hasDetail else { return }
-            withAnimation(.easeInOut(duration: 0.18)) {
-                if open { model.expanded.remove(id) } else { model.expanded.insert(id) }
-            }
-        }
-    }
-
-    @ViewBuilder private func itemDetail(_ p: Palette, _ id: String) -> some View {
-        switch id {
-        case "music": musicDetail(p)
-        case "bluetooth": bluetoothDetail(p)
-        case "network": networkDetail(p)
-        case "fan": fanDetail(p)
-        case "fps": fpsDetail(p)
-        case "temperature": temperatureDetail(p)
-        default: EmptyView()
-        }
     }
 
     // MARK: 展开后的设置
 
-    /// 展开区：缩进到图标下方，浅色底。
+    /// 各模块页的一组设置（放在 section 的卡片里）。
     private func detail<Content: View>(_ p: Palette, @ViewBuilder content: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: 0) { content() }
-            .padding(.horizontal, 12).padding(.vertical, 6)
-            .background(RoundedRectangle(cornerRadius: 8).fill(p.text.opacity(0.04)))
-            .padding(.leading, 46).padding(.bottom, 8)
     }
 
     private func detailRow<Control: View>(_ p: Palette, _ title: String, _ subtitle: String? = nil, @ViewBuilder control: () -> Control) -> some View {
         HStack(spacing: 12) {
             VStack(alignment: .leading, spacing: 2) {
-                Text(title).font(Typo.body).foregroundStyle(p.text)
-                if let subtitle { Text(subtitle).font(Typo.caption).foregroundStyle(p.text3) }
+                Text(title).font(Typo.settingsBody).foregroundStyle(p.text)
+                if let subtitle { Text(subtitle).font(Typo.settingsCaption).foregroundStyle(p.text3) }
             }
             Spacer(minLength: 8)
             control()
@@ -807,13 +848,13 @@ struct SettingsView: View {
             row(p, "退出时交还系统", "退出、崩溃或睡眠时自动交还", icon: "arrow.uturn.backward", tint: Color(hex: 0x30D158)) {
                 HStack(spacing: 4) {
                     Image(systemName: "lock.fill").font(.system(size: 10))
-                    Text("始终开启").font(Typo.caption)
+                    Text("始终开启").font(Typo.settingsCaption)
                 }
                 .foregroundStyle(p.text3)
             }
         
             Text("通过未公开的 SMC 接口调速，系统升级后可能失效。转速有安全下限、绝不停转，但仍请自行承担风险；异常时切回“自动”或卸载组件。")
-                .font(Typo.caption).foregroundStyle(p.text3)
+                .font(Typo.settingsCaption).foregroundStyle(p.text3)
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.vertical, 6)
         }
@@ -844,9 +885,24 @@ struct SettingsView: View {
                     }
                 }
             }
-            Text("显示的设备（取消勾选即隐藏）").font(Typo.caption).foregroundStyle(p.text3).padding(.top, 6)
+        }
+    }
+
+    /// 蓝牙电量页：低电量提醒 + 岛上显示哪些设备。
+    private func bluetoothPage(_ p: Palette) -> some View {
+        let sound = SoundController.shared.panel
+        return VStack(alignment: .leading, spacing: 18) {
+            section(p, "提醒") { bluetoothDetail(p) }
+            section(p, "显示的设备") { bluetoothDevices(p, sound) }
+        }
+        .onAppear { if !flat { SoundController.shared.loadDevices() } }
+    }
+
+    private func bluetoothDevices(_ p: Palette, _ sound: SoundPanelModel) -> some View {
+        detail(p) {
+            Text("取消勾选的设备不在岛上显示").font(Typo.settingsCaption).foregroundStyle(p.text3).padding(.vertical, 4)
             if sound.allDevices.isEmpty {
-                Text("正在读取设备…").font(Typo.caption).foregroundStyle(p.text3).padding(.vertical, 6)
+                Text("正在读取设备…").font(Typo.settingsCaption).foregroundStyle(p.text3).padding(.vertical, 6)
             }
             ForEach(sound.allDevices) { device in
                 Button {
@@ -857,9 +913,9 @@ struct SettingsView: View {
                         Image(systemName: sound.hiddenDevices.contains(device.id) ? "square" : "checkmark.square.fill")
                             .font(.system(size: 15)).foregroundStyle(sound.hiddenDevices.contains(device.id) ? p.text3 : p.accentFill)
                         Image(systemName: device.symbol).font(.system(size: 13)).foregroundStyle(p.text2).frame(width: 20)
-                        Text(device.name).font(Typo.body).foregroundStyle(p.text)
+                        Text(device.name).font(Typo.settingsBody).foregroundStyle(p.text)
                         Spacer()
-                        if device.connected { Text("已连接").font(Typo.caption).foregroundStyle(p.text3) }
+                        if device.connected { Text("已连接").font(Typo.settingsCaption).foregroundStyle(p.text3) }
                     }
                     .padding(.vertical, 5)
                     .contentShape(Rectangle())
@@ -867,7 +923,6 @@ struct SettingsView: View {
                 .buttonStyle(.plain)
             }
         }
-        .onAppear { if !flat { SoundController.shared.loadDevices() } }
     }
 
     /// 开关行的通用开关：读写一个布尔设置。
@@ -902,18 +957,10 @@ struct SettingsView: View {
         }
     }
 
+    /// 指标的图标和颜色：和面板标题共用 Metric.symbol / Metric.tint。
     private static func metricIcon(_ setting: SpeedSetting) -> (String, Color) {
-        switch setting {
-        case .cpuItem: return ("cpu", Color(hex: 0x0A84FF))
-        case .gpuItem: return ("square.stack.3d.up.fill", Color(hex: 0x5E5CE6))
-        case .memoryItem: return ("memorychip", Color(hex: 0x30D158))
-        case .diskItem: return ("internaldrive.fill", Color(hex: 0x8E8E93))
-        case .powerItem: return ("bolt.fill", Color(hex: 0xFFB800))
-        case .temperatureItem: return ("thermometer.medium", Color(hex: 0xFF9F0A))
-        case .fanItem: return ("fanblades.fill", Color(hex: 0x30B0C7))
-        case .fpsItem: return ("gauge.with.needle.fill", Color(hex: 0xFF375F))
-        default: return ("circle.fill", Color(hex: 0x8E8E93))
-        }
+        guard let metric = Metric.allCases.first(where: { $0.setting == setting }) else { return ("circle.fill", Color(hex: 0x8E8E93)) }
+        return (metric.symbol, metric.tint)
     }
 
     @ViewBuilder private func extensionsPage(_ p: Palette) -> some View {
@@ -957,7 +1004,7 @@ struct SettingsView: View {
         VStack(alignment: .leading, spacing: 8) {
             section(p, "显示器") {
                 if displays.displays.isEmpty {
-                    Text("没有检测到显示器").font(Typo.caption).foregroundStyle(p.text3).padding(.vertical, 10)
+                    Text("没有检测到显示器").font(Typo.settingsCaption).foregroundStyle(p.text3).padding(.vertical, 10)
                 }
                 ForEach(Array(displays.displays.enumerated()), id: \.element.id) { index, display in
                     if index > 0 { divider(p) }
@@ -965,14 +1012,11 @@ struct SettingsView: View {
                 }
                 if let message = displays.message {
                     divider(p)
-                    Text(message).font(Typo.caption).foregroundStyle(p.text2)
+                    Text(message).font(Typo.settingsCaption).foregroundStyle(p.text2)
                         .fixedSize(horizontal: false, vertical: true)
                         .frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, 8)
                 }
             }
-            Text("切换显示模式后，15 秒内未确认将自动恢复。")
-            .font(Typo.caption).foregroundStyle(p.text3).fixedSize(horizontal: false, vertical: true)
-            .padding(.horizontal, 4)
         }
         .onAppear { displays.refresh() }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didChangeScreenParametersNotification)) { _ in displays.refresh() }
@@ -990,9 +1034,8 @@ struct SettingsView: View {
     private func displayRow(_ p: Palette, _ display: DisplayManager.Display) -> some View {
         let current = display.current
         let hiDPI = hiDPISwitch(display)
-        let options = displays.expanded.contains(display.id) ? display.allSizes : display.sizeOptions
-        // 核心档位只有一个时也列出来：“更多分辨率”里还有普通分辨率可选
-        let showSizes = display.canSwitch && display.allSizes.count > 1
+        let options = display.sizeOptions
+        let showSizes = display.canSwitch && options.count > 1
         let subtitle: String
         if !display.active {
             subtitle = "未启用"
@@ -1007,17 +1050,17 @@ struct SettingsView: View {
             subtitle = note.map { "\(details)\n\($0)" } ?? details
         }
         return VStack(alignment: .leading, spacing: 0) {
-            row(p, display.isMain ? "\(display.name)（主屏）" : display.name, subtitle,
+            row(p, display.isMain ? "\(display.name)（主屏）" : displays.displays.count > 1 ? "\(display.name)（扩展屏）" : display.name, subtitle,
                 icon: display.builtIn ? "laptopcomputer" : "display", tint: Color(hex: 0x0A84FF)) {
                 if hiDPI != .none {
                     HStack(spacing: 8) {
-                        Text("HiDPI 支持").font(Typo.body).foregroundStyle(p.text2)
+                        Text("HiDPI 支持").font(Typo.settingsBody).foregroundStyle(p.text2)
                         Toggle2(isOn: hiDPI == .on) { setHiDPI($0, on: display) }
                     }
                     .disabled(displays.busy)
                 } else if let note = hiDPINote(display) {
                     // 没有开关的屏幕也说明一下原因，免得让人以为功能缺了
-                    Text(note).font(Typo.caption).foregroundStyle(p.text3)
+                    Text(note).font(Typo.settingsCaption).foregroundStyle(p.text3)
                 }
             }
             if showSizes { sizePicker(p, display, options) }
@@ -1055,10 +1098,8 @@ struct SettingsView: View {
     }
 
     /// 一排档位卡片：原生在最左，往右文字越来越大。每张卡片依次是分辨率、文字说明、界面放大比例（次要）。
-    /// 默认只列核心的几档，其余收在“更多分辨率”里。
+    /// 只列最合适的几档（见 DisplayManager.Display.choices），普通分辨率和不合适的 HiDPI 档位都不列。
     private func sizePicker(_ p: Palette, _ display: DisplayManager.Display, _ options: [DisplayManager.Mode]) -> some View {
-        let expanded = displays.expanded.contains(display.id)
-        let hidden = display.allSizes.count - display.sizeOptions.count
         return VStack(alignment: .trailing, spacing: 6) {
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: 5), spacing: 6) {
                 ForEach(options) { mode in
@@ -1070,7 +1111,7 @@ struct SettingsView: View {
                             Text(mode.size).font(.system(size: 13, weight: .semibold)).monospacedDigit()
                                 .foregroundStyle(selected ? p.accentText : p.text)
                                 .lineLimit(1).minimumScaleFactor(0.7)
-                            Text(label).font(Typo.caption)
+                            Text(label).font(Typo.settingsCaption)
                                 .foregroundStyle(selected || highlight ? p.accentText : p.text2)
                                 .lineLimit(1).minimumScaleFactor(0.8)
                             Text(display.scale(mode))
@@ -1087,12 +1128,6 @@ struct SettingsView: View {
                     .buttonStyle(.plain)
                     .accessibilityLabel("\(mode.size)，\(label)，界面 \(display.scale(mode))")
                 }
-            }
-            if hidden > 0 {
-                Button(expanded ? "收起" : "更多分辨率（\(hidden)）") {
-                    displays.toggleExpanded(display.id)
-                }
-                .buttonStyle(.plain).font(Typo.caption).foregroundStyle(p.accentText)
             }
         }
         .padding(.leading, 42)
@@ -1124,7 +1159,7 @@ struct SettingsView: View {
         let notes = Updater.plainNotes(release.notes)
         return VStack(alignment: .leading, spacing: 10) {
             if !notes.isEmpty {
-                Text(notes).font(Typo.body).foregroundStyle(p.text2).lineSpacing(3)
+                Text(notes).font(Typo.settingsBody).foregroundStyle(p.text2).lineSpacing(3)
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(10)
@@ -1134,21 +1169,21 @@ struct SettingsView: View {
             case .downloading(let fraction, let text):
                 HStack(spacing: 10) {
                     ProgressView(value: fraction).progressViewStyle(.linear)
-                    Text(text.isEmpty ? "正在下载…" : text).font(Typo.caption).foregroundStyle(p.text3).monospacedDigit()
+                    Text(text.isEmpty ? "正在下载…" : text).font(Typo.settingsCaption).foregroundStyle(p.text3).monospacedDigit()
                 }
             case .failed(let message):
                 HStack(spacing: 10) {
-                    Text("没能自动更新：\(message)").font(Typo.caption).foregroundStyle(Color(hex: 0xFF453A))
+                    Text("没能自动更新：\(message)").font(Typo.settingsCaption).foregroundStyle(Color(hex: 0xFF453A))
                         .fixedSize(horizontal: false, vertical: true)
                     Spacer(minLength: 8)
                     LinkButton(title: "打开下载页") { NSWorkspace.shared.open(release.url) }
                 }
             case .ready:
                 Text("已下载并核对完毕，点右上角的按钮重启 islet 即可完成更新，设置不会丢失")
-                    .font(Typo.caption).foregroundStyle(p.text3)
+                    .font(Typo.settingsCaption).foregroundStyle(p.text3)
             case .idle:
                 HStack {
-                    Text("先下载，下载完成后再由你决定何时重启").font(Typo.caption).foregroundStyle(p.text3)
+                    Text("先下载，下载完成后再由你决定何时重启").font(Typo.settingsCaption).foregroundStyle(p.text3)
                     Spacer(minLength: 8)
                     LinkButton(title: "跳过这个版本", muted: true) {
                         UserDefaults.standard.set(release.version, forKey: "skippedUpdateVersion")
@@ -1169,9 +1204,9 @@ struct SettingsView: View {
             VStack(alignment: .leading, spacing: 4) {
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
                     Text(AppInfo.name).font(.system(size: 22, weight: .bold)).foregroundStyle(p.text)
-                    Text("v" + AppInfo.version).font(Typo.caption).foregroundStyle(p.text3)
+                    Text("v" + AppInfo.version).font(Typo.settingsCaption).foregroundStyle(p.text3)
                 }
-                Text(AppInfo.summary).font(Typo.body).foregroundStyle(p.text2).fixedSize(horizontal: false, vertical: true)
+                Text(AppInfo.summary).font(Typo.settingsBody).foregroundStyle(p.text2).fixedSize(horizontal: false, vertical: true)
             }
             Spacer(minLength: 0)
         }
@@ -1192,7 +1227,7 @@ struct SettingsView: View {
             if model.showDonate {
                 divider(p)
                 VStack(spacing: 8) {
-                    Text("如果 islet 对你有帮助，可以请作者喝杯咖啡").font(Typo.caption).foregroundStyle(p.text3)
+                    Text("如果 islet 对你有帮助，可以请作者喝杯咖啡").font(Typo.settingsCaption).foregroundStyle(p.text3)
                     HStack(spacing: 28) {
                         donateCode(p, "alipay", "支付宝", Color(hex: 0x1677FF))
                         donateCode(p, "wechat", "微信", Color(hex: 0x07C160))
@@ -1257,7 +1292,7 @@ struct SettingsView: View {
                     .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(p.separator, lineWidth: 1))
                 HStack(spacing: 6) {
                     Circle().fill(tint).frame(width: 7, height: 7)
-                    Text(title).font(Typo.caption).foregroundStyle(p.text2)
+                    Text(title).font(Typo.settingsCaption).foregroundStyle(p.text2)
                 }
             }
         }
@@ -1293,9 +1328,9 @@ struct SettingsView: View {
         HStack(alignment: .center, spacing: 12) {
             if let icon { IconTile(symbol: icon, tint: tint, size: 30) }
             VStack(alignment: .leading, spacing: 2) {
-                Text(title).font(Typo.body).foregroundStyle(p.text)
+                Text(title).font(Typo.settingsBody).foregroundStyle(p.text)
                 if let subtitle {
-                    Text(subtitle).font(Typo.caption).foregroundStyle(p.text3).fixedSize(horizontal: false, vertical: true)
+                    Text(subtitle).font(Typo.settingsCaption).foregroundStyle(p.text3).fixedSize(horizontal: false, vertical: true)
                 }
             }
             Spacer(minLength: 8)
@@ -1394,7 +1429,7 @@ struct CurveEditorView: View {
                     }
                 }
                 Text("拖动控制点改变温度到转速的映射；斜纹区域是安全下限，曲线拖不进去。")
-                    .font(Typo.caption).foregroundStyle(p.text3)
+                    .font(Typo.settingsCaption).foregroundStyle(p.text3)
                     .fixedSize(horizontal: false, vertical: true)
 
                 chart(p)
@@ -1403,7 +1438,7 @@ struct CurveEditorView: View {
                     .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(p.cardStroke))
 
                 HStack(spacing: 8) {
-                    if !embedded { Text("预设").font(Typo.caption).foregroundStyle(p.text3) }
+                    if !embedded { Text("预设").font(Typo.settingsCaption).foregroundStyle(p.text3) }
                     ForEach(CurvePreset.allCases, id: \.self) { preset in
                         presetCard(p, preset)
                     }
@@ -1414,7 +1449,7 @@ struct CurveEditorView: View {
                     PlainButton(title: embedded ? "删除" : "删除选中点", systemImage: "minus.circle",
                                 disabled: model.selected == nil || model.points.count <= 2, action: model.deleteSelected)
                     Spacer()
-                    Text("\(model.points.count) 个控制点").font(Typo.caption).foregroundStyle(p.text3)
+                    Text("\(model.points.count) 个控制点").font(Typo.settingsCaption).foregroundStyle(p.text3)
                     if fanClient.config.strategy != .curve {
                         PlainButton(title: embedded ? "启用" : "使用曲线调速", prominent: true, action: model.onActivate)
                     } else {
@@ -1433,7 +1468,7 @@ struct CurveEditorView: View {
         return Button { model.apply(preset) } label: {
             VStack(alignment: .leading, spacing: 2) {
                 Text(preset.label).font(Typo.bodyMedium).foregroundStyle(selected ? p.accentText : p.text)
-                if !embedded { Text(preset.detail).font(Typo.caption).foregroundStyle(p.text3).lineLimit(1) }
+                if !embedded { Text(preset.detail).font(Typo.settingsCaption).foregroundStyle(p.text3).lineLimit(1) }
             }
             .padding(.horizontal, 10).padding(.vertical, 7)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -1469,12 +1504,12 @@ struct CurveEditorView: View {
                 .stroke(p.separator, lineWidth: 1)
                 ForEach(0...4, id: \.self) { step in
                     let rpm = model.maximum - (model.maximum - model.minimum) * Double(step) / 4
-                    Text(String(Int(rpm))).font(Typo.caption).foregroundStyle(p.text3)
+                    Text(String(Int(rpm))).font(Typo.settingsCaption).foregroundStyle(p.text3)
                         .frame(width: 44, alignment: .trailing)
                         .position(x: plot.minX - 28, y: plot.minY + plot.height * CGFloat(step) / 4)
                 }
                 ForEach(Array(stride(from: 30, through: 100, by: 10)), id: \.self) { c in
-                    Text("\(c)°").font(Typo.caption).foregroundStyle(p.text3)
+                    Text("\(c)°").font(Typo.settingsCaption).foregroundStyle(p.text3)
                         .position(x: x(Double(c)), y: plot.maxY + 14)
                 }
 
@@ -1573,7 +1608,7 @@ struct RulesView: View {
                 VStack(alignment: .leading, spacing: 4) {
                     if !embedded { Text("规则").font(.system(size: 20, weight: .semibold)).foregroundStyle(p.text) }
                     Text("规则命中时把风扇提到指定转速；多条同时命中取最高；都未命中时交给系统。")
-                        .font(Typo.caption).foregroundStyle(p.text3)
+                        .font(Typo.settingsCaption).foregroundStyle(p.text3)
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 if flat || embedded { ruleList(p) } else { ScrollView { ruleList(p) } }
@@ -1602,7 +1637,7 @@ struct RulesView: View {
                 ruleCard(p, rule)
             }
             if fanClient.config.rules.isEmpty {
-                Text("还没有规则").font(Typo.body).foregroundStyle(p.text3).padding(.vertical, 20)
+                Text("还没有规则").font(Typo.settingsBody).foregroundStyle(p.text3).padding(.vertical, 20)
             }
         }
     }
@@ -1613,7 +1648,7 @@ struct RulesView: View {
             VStack(alignment: .leading, spacing: 6) {
                 HStack(spacing: 6) {
                     Toggle2(isOn: rule.enabled) { on in edit(rule) { $0.enabled = on } }
-                    Text("当").font(Typo.body).foregroundStyle(p.text2)
+                    Text("当").font(Typo.settingsBody).foregroundStyle(p.text2)
                     Menu(rule.group) {
                         ForEach(Temperatures.groupNames, id: \.self) { name in
                             Button(name) { edit(rule) { $0.group = name } }
@@ -1641,7 +1676,7 @@ struct RulesView: View {
                             .background(Capsule().fill(p.accentFill.opacity(0.16)))
                     }
                     Text("回落到 \(Int(rule.threshold - rule.hysteresis))℃ 以下才解除（迟滞 \(Int(rule.hysteresis))℃）")
-                        .font(Typo.caption).foregroundStyle(p.text3)
+                        .font(Typo.settingsCaption).foregroundStyle(p.text3)
                 }
                 .padding(.leading, 36)
             }
@@ -1652,11 +1687,11 @@ struct RulesView: View {
     /// 阈值和目标转速；内嵌在设置里时放到第二行。
     private func valueControls(_ p: Palette, _ rule: FanRule) -> some View {
         HStack(spacing: 6) {
-            Text("≥").font(Typo.body).foregroundStyle(p.text2)
+            Text("≥").font(Typo.settingsBody).foregroundStyle(p.text2)
             Stepper2(value: rule.threshold, step: 1, range: 20...120, unit: "℃", width: 30) { value in
                 edit(rule) { $0.threshold = value }
             }
-            Text("→").font(Typo.body).foregroundStyle(p.text2)
+            Text("→").font(Typo.settingsBody).foregroundStyle(p.text2)
             Stepper2(value: rule.rpm, step: 100, range: (fan?.minimum ?? 0)...(fan?.maximum ?? 10000), unit: "转", width: 40) { value in
                 edit(rule) { $0.rpm = value }
             }
@@ -1700,14 +1735,14 @@ struct AlertRuleRow: View {
                     }
                 }
                 .frame(width: 72)
-                Text("≥").font(Typo.body).foregroundStyle(p.text2)
+                Text("≥").font(Typo.settingsBody).foregroundStyle(p.text2)
                 Menu(thresholdText) {
                     ForEach(choices, id: \.self) { value in
                         Button(label(value)) { rule.threshold = value; onChange() }
                     }
                 }
                 .frame(width: 84)
-                Text("持续").font(Typo.body).foregroundStyle(p.text2)
+                Text("持续").font(Typo.settingsBody).foregroundStyle(p.text2)
                 Menu("\(rule.minutes) 分钟") {
                     ForEach([1, 3, 5, 10, 30], id: \.self) { minutes in
                         Button("\(minutes) 分钟") { rule.minutes = minutes; onChange() }

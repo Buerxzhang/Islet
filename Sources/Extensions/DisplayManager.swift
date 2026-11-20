@@ -110,26 +110,6 @@ final class DisplayManager: ObservableObject {
             return candidates.min { abs(Double($0.width) - target) < abs(Double($1.width) - target) }
         }
 
-        /// 不在核心档位里的普通（非 HiDPI）分辨率：放大显示、发虚，只收在“更多分辨率”里，想用也能选。
-        /// 与屏幕同宽高比、不拉伸，每档取最接近当前刷新率的那个。
-        var normalModes: [Mode] {
-            guard let native, native.height > 0 else { return [] }
-            let ratio = Double(native.width) / Double(native.height)
-            let listed = Set(choices.map(\.group))
-            var best: [String: Mode] = [:]
-            for mode in modes where !mode.hiDPI && !mode.stretched && mode.height > 0 && !listed.contains(mode.group)
-                && abs(Double(mode.width) / Double(mode.height) / ratio - 1) <= 0.01 {
-                if let existing = best[mode.group], abs(existing.hz - current.hz) <= abs(mode.hz - current.hz) { continue }
-                best[mode.group] = mode
-            }
-            return Array(best.values)
-        }
-
-        /// 全部可选的大小（核心档位 + 普通分辨率）：原生在最前，往后文字越来越大。
-        var allSizes: [Mode] {
-            (choices + normalModes).sorted { ($0.width, $0.hiDPI ? 0 : 1) > ($1.width, $1.hiDPI ? 0 : 1) }
-        }
-
         /// 默认展示的核心档位，最多 5 个：原生、推荐、当前必留，其余挑紧挨着推荐的。
         var sizeOptions: [Mode] {
             let all = choices.sorted { ($0.width, $0.hiDPI ? 0 : 1) > ($1.width, $1.hiDPI ? 0 : 1) }
@@ -168,13 +148,6 @@ final class DisplayManager: ObservableObject {
     /// 各块屏的覆盖配置状态（来自辅助程序）。
     @Published private(set) var overrides: [CGDirectDisplayID: OverrideStatus] = [:]
     @Published private(set) var busy = false
-    /// 设置里展开了“更多分辨率”的屏幕
-    @Published private(set) var expanded: Set<CGDirectDisplayID> = []
-
-    func toggleExpanded(_ id: CGDirectDisplayID) {
-        if expanded.remove(id) == nil { expanded.insert(id) }
-    }
-    func collapseAll() { expanded = [] }
     @Published private(set) var message: String?
 
     struct OverrideStatus: Decodable {
@@ -185,8 +158,6 @@ final class DisplayManager: ObservableObject {
     }
 
     private var helper: URL? { Bundle.main.executableURL?.deletingLastPathComponent().appendingPathComponent("islet-display") }
-    private var decision: FileHandle?
-    private var confirmation: NSAlert?
 
     private init() {}
 
@@ -243,22 +214,12 @@ final class DisplayManager: ObservableObject {
                 mode = pick(recommended.group, display.current.hz)
                 if let mode, want != nil { fallback[display.id] = mode.group }
             }
-            guard let mode, mode.group != display.current.group,
-                  let target = (CGDisplayCopyAllDisplayModes(display.id, [kCGDisplayShowDuplicateLowResolutionModes as String: true] as CFDictionary)
-                      as? [CGDisplayMode])?.first(where: { $0.ioDisplayModeID == mode.id }) else {
+            guard let mode, mode.group != display.current.group, apply(mode, on: display.id) else {
                 if want == nil { remembered[display.id] = (display.current.group, display.current.hz) }
                 continue
             }
-            var config: CGDisplayConfigRef?
-            guard CGBeginDisplayConfiguration(&config) == .success, let config else { continue }
-            guard CGConfigureDisplayWithDisplayMode(config, display.id, target, nil) == .success else {
-                CGCancelDisplayConfiguration(config)
-                continue
-            }
-            if CGCompleteDisplayConfiguration(config, .permanently) == .success {
-                restored = true
-                if want == nil { remembered[display.id] = (mode.group, mode.hz) }
-            }
+            restored = true
+            if want == nil { remembered[display.id] = (mode.group, mode.hz) }
         }
         if restored { refresh() }
     }
@@ -317,7 +278,7 @@ final class DisplayManager: ObservableObject {
     // MARK: 添加 / 移除 HiDPI 档位
 
     /// 添加后需要重新连接这块屏，新档位才会出现：有另一块屏在用时自动用软件重连，否则提示手动插拔。
-    /// 新档位出现后自动切到推荐的大小（同样 15 秒内确认才保留）。
+    /// 新档位出现后自动切到推荐的大小。
     func addHiDPI(_ display: Display) {
         pendingRecommend = display.id
         perform(["install"], then: ["reconnect"], on: display)
@@ -370,87 +331,27 @@ final class DisplayManager: ObservableObject {
         }
     }
 
-    // MARK: 切换分辨率（先临时生效，15 秒内确认才保留）
+    // MARK: 切换分辨率
+    // 列表里只有系统支持、切过去能正常显示的档位，和系统设置一样直接切换保存，不再弹确认
 
     func choose(_ mode: Mode, on display: Display) {
-        guard !busy, display.canSwitch, mode.id != display.current.id, let helper else { return }
-        let decision = Pipe()
-        // 用户恰好在超时那一刻点按钮：写端不能让 SIGPIPE 结束 islet
-        _ = fcntl(decision.fileHandleForWriting.fileDescriptor, F_SETNOSIGPIPE, 1)
-        let output = Pipe()
-        let process = Process()
-        process.executableURL = helper
-        process.arguments = ["mode", String(display.id), String(mode.id)]
-        process.standardInput = decision
-        process.standardOutput = output
-        process.standardError = output
-        do { try process.run() } catch { message = error.localizedDescription; return }
-        self.decision = decision.fileHandleForWriting
-        busy = true
-        message = nil
-        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            let ready = Data("READY\n".utf8)
-            let reader = output.fileHandleForReading
-            let prefix = reader.readData(ofLength: ready.count)
-            if prefix == ready { DispatchQueue.main.async { self?.askToKeep() } }
-            let rest = reader.readDataToEndOfFile()
-            process.waitUntilExit()
-            let text = String(decoding: (prefix == ready ? Data() : prefix) + rest, as: UTF8.self)
-                .trimmingCharacters(in: .whitespacesAndNewlines).split(separator: "\n").last.map(String.init)
-            DispatchQueue.main.async {
-                guard let self else { return }
-                self.decision = nil
-                if let alert = self.confirmation {
-                    self.confirmation = nil
-                    if let parent = alert.window.sheetParent { parent.endSheet(alert.window, returnCode: .abort) } else { NSApp.abortModal() }
-                }
-                self.busy = false
-                // 切换成功不用提示（选中的档位已经变了），只留失败和自动恢复的说明
-                self.message = process.terminationStatus == 0 && text == "已切换" ? nil : text
-                self.refresh()
-                self.rememberCurrent(chosen: true)
-            }
-        }
+        guard !busy, display.canSwitch, mode.id != display.current.id else { return }
+        message = apply(mode, on: display.id) ? nil : "系统没有接受这个显示模式"
+        refresh()
+        rememberCurrent(chosen: true)
     }
 
-    private func askToKeep() {
-        guard decision != nil else { return }
-        let alert = NSAlert()
-        alert.messageText = "保留这个分辨率？"
-        // 倒计时与辅助程序的 15 秒超时对应；画面若黑屏看不到弹窗，到时也会自动恢复
-        var remaining = 15
-        let text = { "\(remaining) 秒后自动恢复原来的分辨率。" }
-        alert.informativeText = text()
-        alert.addButton(withTitle: "保留")
-        alert.addButton(withTitle: "恢复")
-        confirmation = alert
-        let timer = Timer(timeInterval: 1, repeats: true) { [weak self, weak alert] timer in
-            guard let alert, self?.confirmation === alert, remaining > 1 else { timer.invalidate(); return }
-            remaining -= 1
-            alert.informativeText = text()
+    /// 切到这个模式并保存（系统也会把它记进当前的屏幕组合）。
+    private func apply(_ mode: Mode, on id: CGDirectDisplayID) -> Bool {
+        let options = [kCGDisplayShowDuplicateLowResolutionModes as String: true] as CFDictionary
+        guard let target = (CGDisplayCopyAllDisplayModes(id, options) as? [CGDisplayMode])?
+                .first(where: { $0.ioDisplayModeID == mode.id }) else { return false }
+        var config: CGDisplayConfigRef?
+        guard CGBeginDisplayConfiguration(&config) == .success, let config else { return false }
+        guard CGConfigureDisplayWithDisplayMode(config, id, target, nil) == .success else {
+            CGCancelDisplayConfiguration(config)
+            return false
         }
-        RunLoop.main.add(timer, forMode: .common)   // 独立弹窗是模态运行，普通模式的计时器不走
-        // 设置窗口没开（比如切换后被关掉）：弹独立的对话框
-        guard let window = NSApp.windows.first(where: { $0.title == "islet 设置" && $0.isVisible }) else {
-            NSApp.activate()
-            let response = alert.runModal()
-            guard confirmation === alert else { return }   // 已超时恢复
-            confirmation = nil
-            answer(response == .alertFirstButtonReturn)
-            return
-        }
-        window.makeKeyAndOrderFront(nil)
-        alert.beginSheetModal(for: window) { [weak self, weak alert] response in
-            guard let self, let alert, self.confirmation === alert else { return }
-            self.confirmation = nil
-            self.answer(response == .alertFirstButtonReturn)
-        }
-    }
-
-    private func answer(_ keep: Bool) {
-        guard let decision else { return }
-        try? decision.write(contentsOf: Data((keep ? "yes\n" : "no\n").utf8))
-        try? decision.close()
-        self.decision = nil
+        return CGCompleteDisplayConfiguration(config, .permanently) == .success
     }
 }

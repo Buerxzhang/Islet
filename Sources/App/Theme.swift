@@ -21,8 +21,9 @@ struct Palette {
     let hot: Color
 
     static let dark = Palette(
-        panel: Color(hex: 0x1C1C1E), card: Color(hex: 0x2A2A2E), cardStroke: .white.opacity(0.06),
-        inset: Color(hex: 0x141416), hover: .white.opacity(0.06),
+        // 底色和岛的胶囊是同一种近黑，卡片在上面稍微提亮
+        panel: Color(hex: 0x0F0F10), card: Color(hex: 0x1C1C1E), cardStroke: .white.opacity(0.07),
+        inset: Color(hex: 0x09090A), hover: .white.opacity(0.06),
         text: Color(hex: 0xF5F5F7), text2: Color(hex: 0xA1A1A6), text3: Color(hex: 0x8A8A90),
         separator: .white.opacity(0.10),
         accentText: Color(hex: 0x46C8FF), accentFill: Color(hex: 0x46C8FF),
@@ -38,16 +39,14 @@ struct Palette {
 
     static func resolve(_ scheme: ColorScheme) -> Palette { scheme == .dark ? .dark : .light }
 
-    /// 温度着色：< 60 冷，60–75 暖，> 75 热（FunFan 固定阈值）。
+    /// 温度着色（传感器列表、曲线编辑器）：和岛、面板圆环同一套阈值（Metric.level），< 80° 绿，80–95° 橙，≥ 95° 红。
     func temperature(_ celsius: Double?) -> Color {
         guard let celsius else { return text3 }
-        return celsius > 75 ? hot : celsius >= 60 ? warm : cool
-    }
-
-    /// 负载着色：< 70% 正常（强调色），70–90% 暖，≥ 90% 热。
-    func load(_ fraction: Double?) -> Color {
-        guard let fraction else { return text3 }
-        return fraction >= 0.9 ? hot : fraction >= 0.7 ? warm : accentFill
+        switch Metric.temperature.level(celsius) {
+        case .normal: return cool
+        case .warning: return warm
+        case .critical: return hot
+        }
     }
 }
 
@@ -65,8 +64,12 @@ enum Typo {
     static let bodyMedium = Font.system(size: 12, weight: .medium)
     static let caption = Font.system(size: 11)
     static let captionMedium = Font.system(size: 11, weight: .medium)
+    /// 设置窗口是独立窗口，正文用 macOS 标准的 13pt，说明 12pt（面板仍是 12 / 11）
+    static let settingsBody = Font.system(size: 13)
+    static let settingsCaption = Font.system(size: 12)
+    /// 数值：和岛上一样用窄体 + 等宽数字，从胶囊点开面板时字形连贯。
     static func number(_ size: CGFloat, _ weight: Font.Weight = .semibold) -> Font {
-        .system(size: size, weight: weight).monospacedDigit()
+        .system(size: size, weight: weight).width(.condensed).monospacedDigit()
     }
 }
 
@@ -131,14 +134,23 @@ struct Ring: View {
                 Circle().stroke(p.inset, lineWidth: 8)
                 if let fraction {
                     Circle()
-                        .trim(from: 0, to: min(max(fraction, 0), 1))
+                        .trim(from: 0, to: min(max(fraction, 0.015), 1))   // 0 时也留一点，不像没数据
                         .stroke(color ?? p.accentFill, style: StrokeStyle(lineWidth: 8, lineCap: .round))
                         .rotationEffect(.degrees(-90))
                 }
+                // unit 写成“单位 说明”：单位跟在数字后面（小一号），下面一行只写说明，如 18% / 占用、12.1 GB / 已用。
+                // 没有空格的只当说明
+                let parts = unit.split(separator: " ", maxSplits: 1).map(String.init)
+                let suffix = parts.count == 2 && value != "—" ? parts[0] : ""
+                let label = parts.count == 2 ? parts[1] : unit
+                let tight = suffix == "%" || suffix.hasPrefix("°")
+                let size: CGFloat = value.count > 5 ? 18 : 22
                 VStack(spacing: 0) {
-                    Text(value).font(Typo.number(value.count > 5 ? 18 : 22)).foregroundStyle(p.text)
+                    (Text(value).font(Typo.number(size))
+                        + Text(suffix.isEmpty ? "" : (tight ? suffix : " " + suffix)).font(Typo.number(size * 0.6)))
+                        .foregroundStyle(p.text)
                         .minimumScaleFactor(0.6).lineLimit(1)
-                    Text(unit).font(Typo.caption).foregroundStyle(p.text3)
+                    Text(label).font(Typo.caption).foregroundStyle(p.text3)
                 }
                 .padding(.horizontal, 10)
             }
@@ -275,10 +287,11 @@ struct PlainButton: View {
                 .foregroundStyle(disabled ? p.text3 : prominent ? p.accentText : p.text)
                 .padding(.horizontal, 10)
                 .frame(height: 26)
+                // 次级按钮统一成浅灰底、无描边（和下拉菜单同一种样子）
                 .background(RoundedRectangle(cornerRadius: 7)
-                    .fill(prominent ? p.accentFill.opacity(0.16) : p.inset))
+                    .fill(prominent ? p.accentFill.opacity(0.16) : p.text.opacity(0.08)))
                 .overlay(RoundedRectangle(cornerRadius: 7)
-                    .strokeBorder(prominent ? p.accentFill.opacity(0.5) : p.cardStroke))
+                    .strokeBorder(prominent ? p.accentFill.opacity(0.5) : .clear))
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
@@ -402,17 +415,16 @@ struct Stepper2: View {
     }
 }
 
-/// 彩色圆角方块里的白色图标（设置窗口的导航和行首图标）。
+/// 设置窗口导航和行首的彩色图标（和面板标题同样式）。
 struct IconTile: View {
     let symbol: String
     let tint: Color
     var size: CGFloat = 28
 
+    /// 和面板标题一样：只画彩色图标，不带底块
     var body: some View {
-        Image(systemName: symbol).font(.system(size: size * 0.46, weight: .semibold)).foregroundStyle(.white)
+        Image(systemName: symbol).font(.system(size: size * 0.6, weight: .semibold)).foregroundStyle(tint)
             .frame(width: size, height: size)
-            .background(RoundedRectangle(cornerRadius: size * 0.26, style: .continuous)
-                .fill(LinearGradient(colors: [tint.opacity(0.85), tint], startPoint: .top, endPoint: .bottom)))
     }
 }
 

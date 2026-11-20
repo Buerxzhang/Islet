@@ -3,13 +3,12 @@ import Darwin
 import Foundation
 
 // islet 的显示器辅助程序（打包为 islet.app/Contents/MacOS/islet-display，由设置页调用）。
-// 单独成进程：切换显示模式、写系统配置都在这里做，出问题不会拖垮 islet 本身。
+// 单独成进程：写系统配置、重连屏幕都在这里做，出问题不会拖垮 islet 本身。
 //
 //   status <屏幕 ID>            输出 JSON：是否外接、是否已有覆盖配置、是否 islet 添加的
 //   install <屏幕 ID>           按这块屏的原生分辨率生成 HiDPI 档位，写入系统覆盖配置（需要管理员密码）
 //   remove <屏幕 ID>            删除 islet 添加的覆盖配置（需要管理员密码；别的工具写的不碰）
 //   reconnect <屏幕 ID>         用软件断开再接上这块屏，让新档位生效（需要另一块屏在用）
-//   mode <屏幕 ID> <模式 ID>    切换显示模式：先临时生效，输出 READY；15 秒内从标准输入收到 yes 才保留，否则恢复
 
 let arguments = Array(CommandLine.arguments.dropFirst())
 
@@ -54,7 +53,7 @@ func nativeSize(_ display: CGDirectDisplayID) -> (width: Int, height: Int)? {
     return pick.map { ($0.width, $0.height) }
 }
 
-/// HiDPI 档位：UI 放大 200%、160%、142.9%、133.3%（相对原生），绘制尺寸最多是屏幕的 1.5 倍。
+/// HiDPI 档位：UI 放大 200%、153.8%、142.9%、133.3%（相对原生），绘制尺寸最多是屏幕的 1.5 倍。
 /// 尽量取与原生严格等比例的尺寸（宽高都是偶数），不会有黑边或变形；凑不出来时按宽度取最接近的偶数。
 func scaledSizes(native: (width: Int, height: Int)) -> [(width: Int, height: Int)] {
     func gcd(_ a: Int, _ b: Int) -> Int { b == 0 ? a : gcd(b, a % b) }
@@ -63,7 +62,7 @@ func scaledSizes(native: (width: Int, height: Int)) -> [(width: Int, height: Int
     let step = unitW % 2 == 0 && unitH % 2 == 0 ? 1 : 2   // 单位尺寸有奇数时，倍数取偶数，宽高才都是偶数
     var seen = Set<String>()
     // 不加 125%、114.3%、111.1%：绘制尺寸超过屏幕 1.5 倍，切过去显示器会黑屏重启，设置里也不列
-    let sizes: [(width: Int, height: Int)] = [2.0, 1.6, 10.0 / 7.0, 4.0 / 3.0].compactMap { factor in
+    let sizes: [(width: Int, height: Int)] = [2.0, 20.0 / 13.0, 10.0 / 7.0, 4.0 / 3.0].compactMap { factor in
         let target = Double(native.width) / factor
         let k = Int((target / Double(unitW * step)).rounded()) * step
         var width = unitW * k, height = unitH * k
@@ -244,29 +243,6 @@ case "reconnect":
     }
     print("已重新连接")
 
-case "mode":
-    guard arguments.count == 3, let modeID = Int32(arguments[2]) else { fail("用法：mode <屏幕 ID> <模式 ID>") }
-    let id = display(arguments[1])
-    guard CGDisplayIsActive(id) != 0, CGDisplayIsInMirrorSet(id) == 0, let previous = CGDisplayCopyDisplayMode(id) else {
-        fail("这块屏正在镜像或未启用，不能单独切换")
-    }
-    guard let selected = allModes(id).first(where: { $0.ioDisplayModeID == modeID && $0.isUsableForDesktopGUI() }) else {
-        fail("这个显示模式现在不可用")
-    }
-    guard configure(id, mode: selected, option: .forSession) else { fail("系统没有接受这个显示模式") }
-    FileHandle.standardOutput.write(Data("READY\n".utf8))
-    var input = pollfd(fd: STDIN_FILENO, events: Int16(POLLIN), revents: 0)
-    if poll(&input, 1, 15_000) > 0, readLine()?.trimmingCharacters(in: .whitespacesAndNewlines) == "yes" {
-        guard configure(id, mode: selected, option: .permanently) else {
-            _ = configure(id, mode: previous, option: .forSession)
-            fail("系统没有保存这个模式，已恢复原来的设置")
-        }
-        print("已切换")
-    } else {
-        guard configure(id, mode: previous, option: .forSession) else { fail("没能自动恢复，请在系统设置 → 显示器里选回原来的分辨率") }
-        print("已恢复原来的分辨率")
-    }
-
 default:
-    fail("用法：islet-display status|install|remove|reconnect <屏幕 ID>，或 mode <屏幕 ID> <模式 ID>")
+    fail("用法：islet-display status|install|remove|reconnect <屏幕 ID>")
 }

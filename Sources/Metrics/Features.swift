@@ -22,27 +22,31 @@ enum ProcessControl {
         return identity == Bundle.main.bundlePath || identity.hasPrefix(Bundle.main.bundlePath + "/")
     }
 
-    /// 仍在运行、且归当前用户所有的进程号。
-    static func owned(_ pids: [Int32]) -> [Int32] {
+    /// 仍在运行、归当前用户所有、而且还是同一个程序的进程号。
+    /// 核对程序路径：原进程退出后进程号可能被别的程序复用，不能只看进程号和用户。
+    static func owned(_ identity: String, _ pids: [Int32]) -> [Int32] {
         let uid = getuid()
+        var path = [CChar](repeating: 0, count: 4 * Int(MAXPATHLEN))
         return pids.filter { pid in
             var info = proc_bsdshortinfo()
             let size = Int32(MemoryLayout<proc_bsdshortinfo>.size)
-            return pid > 0 && proc_pidinfo(pid, PROC_PIDT_SHORTBSDINFO, 0, &info, size) == size && info.pbsi_uid == uid
+            guard pid > 0, proc_pidinfo(pid, PROC_PIDT_SHORTBSDINFO, 0, &info, size) == size, info.pbsi_uid == uid,
+                  proc_pidpath(pid, &path, UInt32(path.count)) > 0 else { return false }
+            return AppIdentityResolver.identity(forPath: String(cString: path)) == identity
         }
     }
 
     /// 排行里是否显示“结束”按钮。
     static func canTerminate(_ identity: String, pids: [Int32]) -> Bool {
-        !isProtected(identity) && !owned(pids).isEmpty
+        !isProtected(identity) && !owned(identity, pids).isEmpty
     }
 
-    static func isRunning(_ pids: [Int32]) -> Bool { !owned(pids).isEmpty }
+    static func isRunning(_ identity: String, pids: [Int32]) -> Bool { !owned(identity, pids).isEmpty }
 
     /// 优雅退出：.app 走正常退出流程（可能弹出“是否保存”），其他进程发 SIGTERM。
     static func quit(_ identity: String, pids: [Int32]) -> Outcome {
         guard !isProtected(identity) else { return .notAllowed }
-        let mine = owned(pids)
+        let mine = owned(identity, pids)
         guard !mine.isEmpty else { return pids.contains { kill($0, 0) == 0 || errno == EPERM } ? .denied : .notFound }
         if identity.hasSuffix(".app") {
             let apps = NSWorkspace.shared.runningApplications.filter { $0.bundleURL?.path == identity }
@@ -58,7 +62,7 @@ enum ProcessControl {
     /// 强制结束：立即终止，未保存的内容会丢失。
     static func forceQuit(_ identity: String, pids: [Int32]) -> Outcome {
         guard !isProtected(identity) else { return .notAllowed }
-        let mine = owned(pids)
+        let mine = owned(identity, pids)
         guard !mine.isEmpty else { return .notFound }
         if identity.hasSuffix(".app") {
             NSWorkspace.shared.runningApplications.filter { $0.bundleURL?.path == identity }.forEach { $0.forceTerminate() }

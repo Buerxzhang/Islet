@@ -10,14 +10,9 @@ enum StatusIcons {
         let dim: NSColor
     }
 
-    /// 数值的状态色。
+    /// 数值的状态色（阈值见 Metric.level，岛和面板共用）。
     enum Level {
         case normal, warning, critical
-
-        init(_ fraction: Double?, warn: Double = 0.7, alarm: Double = 0.9) {
-            guard let fraction else { self = .normal; return }
-            self = fraction >= alarm ? .critical : fraction >= warn ? .warning : .normal
-        }
     }
 
     /// 数值字体：系统字体的窄体（SF Pro Condensed）+ 等宽数字，每段比常规字宽窄约 15%，数值变化时宽度不变。

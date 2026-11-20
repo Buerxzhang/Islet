@@ -29,7 +29,7 @@ struct SpectrumPanelView: View {
             VStack(alignment: .leading, spacing: 12) {
                 HStack(spacing: 8) {
                     Image(systemName: "waveform").font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(p.accentFill).frame(width: 20)
+                        .foregroundStyle(Color(hex: 0xFF375F)).frame(width: 20)   // 和设置里“音乐”同一个图标
                     Text(model.source == nil ? "音乐频谱" : "频谱").font(Typo.title).foregroundStyle(p.text)
                     Spacer()
                     Button(action: model.onSettings) {

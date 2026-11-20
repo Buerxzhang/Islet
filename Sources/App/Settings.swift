@@ -152,6 +152,25 @@ enum IslandOrder {
         return order
     }
 
+    /// 分体时的实际顺序：三个模块各成一个小胶囊，指标连在一起（合体时音乐、蓝牙可以穿插在指标之间）。
+    static func grouped(_ order: [String]) -> [String] {
+        flatten(modules: modules(order), metrics: order.filter { $0 != "music" && $0 != "bluetooth" })
+    }
+
+    /// 三个模块的先后：按各自（指标取第一个）在顺序里出现的位置。
+    static func modules(_ order: [String]) -> [String] {
+        var result: [String] = []
+        for id in order {
+            let module = id == "music" || id == "bluetooth" ? id : "metrics"
+            if !result.contains(module) { result.append(module) }
+        }
+        return result
+    }
+
+    static func flatten(modules: [String], metrics: [String]) -> [String] {
+        modules.flatMap { $0 == "metrics" ? metrics : [$0] }
+    }
+
     static func save(_ items: [String]) { UserDefaults.standard.set(items, forKey: key) }
 }
 

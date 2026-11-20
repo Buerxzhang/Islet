@@ -122,6 +122,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
 
     private static let floatingOriginKey = "floatingIslandOrigin"
     static var freeFloatingIsland: Bool { UserDefaults.standard.bool(forKey: "freeFloatingIsland") }
+    /// 悬浮胶囊显示在哪块屏："main" 主屏幕（默认），其余是某块屏的 UUID。
+    /// 用 UUID 不用屏幕编号：换接口、重启后编号可能会变。指定的屏没接着时退回主屏幕
+    static let islandScreenKey = "floatingIslandScreen"
+    static var islandScreen: String { UserDefaults.standard.string(forKey: islandScreenKey) ?? "main" }
+    static func screenUUID(_ screen: NSScreen) -> String? {
+        guard let number = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber,
+              let uuid = CGDisplayCreateUUIDFromDisplayID(number.uint32Value)?.takeRetainedValue() else { return nil }
+        return CFUUIDCreateString(nil, uuid) as String
+    }
     private var floatingOrigin = UserDefaults.standard.string(forKey: AppDelegate.floatingOriginKey).map(NSPointFromString)
     private var floatingPanel: NSPanel?
     private var floatingScreen: NSNumber?
@@ -159,6 +168,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         SoundController.shared.closeBluetoothPanel()
         SpectrumController.shared.closePanel()
         UserDefaults.standard.set(free, forKey: "freeFloatingIsland")
+        updateIsland()
+        settingsModel.refresh()
+    }
+
+    private func setIslandScreen(_ value: String) {
+        UserDefaults.standard.set(value, forKey: Self.islandScreenKey)
         updateIsland()
         settingsModel.refresh()
     }
@@ -228,8 +243,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         let selectedScreen = NSScreen.screens.first {
             $0.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber == floatingScreen
         }
-        let screen = (Self.freeFloatingIsland ? selectedScreen ?? savedScreen : selectedScreen)
-            ?? button.window?.screen ?? NSScreen.main
+        let primary = NSScreen.screens.first   // 系统设置里的主显示器（菜单栏所在）
+        let chosen: NSScreen?
+        switch Self.islandScreen {
+        case "main": chosen = primary
+        case let uuid: chosen = NSScreen.screens.first { Self.screenUUID($0) == uuid } ?? primary
+        }
+        // 自由拖动时拖到哪块屏就在哪块屏
+        let screen = (Self.freeFloatingIsland ? selectedScreen ?? savedScreen : chosen) ?? primary ?? NSScreen.main
         let size = NSSize(width: width, height: max(26, NSStatusBar.system.thickness))
         guard size.width > 0, !sleeping, let screen else {
             if panel.isVisible { panel.orderOut(nil) }
@@ -458,11 +479,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         Self.setDefaultFloating()
         _ = island
         applyItemVisibility()
-        SpectrumController.shared.openSettings = { [weak self] in self?.openSettings(page: .menuBar, expand: "music") }
+        SpectrumController.shared.openSettings = { [weak self] in self?.openSettings(page: .music) }
         SpectrumController.shared.showContextMenu = { [weak self] anchor in self?.showIslandMenu(from: anchor) }
         SpectrumController.shared.setHost(self)   // 频谱放进灵动岛左侧
         SpectrumController.shared.start()  // 在指标项之后创建：排在 CPU 左侧
-        SoundController.shared.openSettings = { [weak self] in self?.openSettings(page: .menuBar, expand: "bluetooth") }
+        SoundController.shared.openSettings = { [weak self] in self?.openSettings(page: .bluetooth) }
         SoundController.shared.start()
         SoundController.shared.onBluetoothImage = { [weak self] image in
             self?.bluetoothImage = image
@@ -490,7 +511,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         let workspace = NSWorkspace.shared.notificationCenter
         workspace.addObserver(self, selector: #selector(volumesChanged), name: NSWorkspace.didMountNotification, object: nil)
         workspace.addObserver(self, selector: #selector(volumesChanged), name: NSWorkspace.didUnmountNotification, object: nil)
-        workspace.addObserver(self, selector: #selector(willSleep), name: NSWorkspace.willSleepNotification, object: nil)
+        workspace.addObserver(self, selector: #selector(systemWillSleep), name: NSWorkspace.willSleepNotification, object: nil)
         workspace.addObserver(self, selector: #selector(appLaunched(_:)), name: NSWorkspace.didLaunchApplicationNotification, object: nil)
         scheduleLeftmost(after: 3)   // 启动时也排到最左
         AlertCenter.shared.prepare()
@@ -513,7 +534,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         DisplayManager.shared.startRestoring()
         NotificationCenter.default.addObserver(self, selector: #selector(floatingScreenChanged),
                                                name: NSApplication.didChangeScreenParametersNotification, object: nil)
-        workspace.addObserver(self, selector: #selector(didWake), name: NSWorkspace.didWakeNotification, object: nil)
+        workspace.addObserver(self, selector: #selector(systemDidWake), name: NSWorkspace.didWakeNotification, object: nil)
         workspace.addObserver(self, selector: #selector(frontmostAppChanged), name: NSWorkspace.didActivateApplicationNotification, object: nil)
         // 屏幕关闭 / 切换用户时菜单栏不可见，暂停采样省电
         workspace.addObserver(self, selector: #selector(willSleep), name: NSWorkspace.screensDidSleepNotification, object: nil)
@@ -543,7 +564,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         }
         view.trailing = bluetoothImage
         view.split = MetricsIslandView.splits
-        view.slots = IslandOrder.items.compactMap { id -> MetricsIslandView.Slot? in
+        let order = MetricsIslandView.splits ? IslandOrder.grouped(IslandOrder.items) : IslandOrder.items
+        view.slots = order.compactMap { id -> MetricsIslandView.Slot? in
             switch id {
             case "music": return .audio
             case "bluetooth": return .trailing
@@ -700,10 +722,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
                                         ("访达", "/System/Library/CoreServices/Finder.app")]
         let values: [[String]] = {
             switch metric {
-            case .network: return [["1.8MB", "96KB"], ["420KB", "12KB"], ["86KB", "40KB"], ["12KB", "3KB"], ["2KB", "0KB"]]
-            case .disk: return [["24MB", "3.1MB"], ["8.2MB", "1.2MB"], ["2.1MB", "640KB"], ["0KB", "420KB"], ["96KB", "0KB"]]
-            case .memory: return [["2.4G"], ["860M"], ["620M"], ["540M"], ["180M"]]
-            case .power: return [["6.2W"], ["1.8W"], ["0.9W"], ["0.6W"], ["0.2W"]]
+            // 写法和真实数据一致：数字和单位之间有空格
+            case .network: return [["1.8 MB", "96 KB"], ["420 KB", "12 KB"], ["86 KB", "40 KB"], ["12 KB", "3 KB"], ["2 KB", "0 KB"]]
+            case .disk: return [["24 MB", "3.1 MB"], ["8.2 MB", "1.2 MB"], ["2.1 MB", "640 KB"], ["0 KB", "420 KB"], ["96 KB", "0 KB"]]
+            case .memory: return [["2.40 GB"], ["860 MB"], ["620 MB"], ["540 MB"], ["180 MB"]]
+            case .power: return [["6.2 W"], ["1.8 W"], ["0.9 W"], ["0.6 W"], ["0.2 W"]]
             default: return [["38%"], ["12%"], ["6.4%"], ["4.1%"], ["1.2%"]]
             }
         }()
@@ -724,11 +747,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             setupFanEditors()
             updateControlTemperatures()
             if let page = SettingsPage.allCases.first(where: { CommandLine.arguments.contains($0.rawValue) }) { settingsModel.page = page }
-            if CommandLine.arguments.contains("open") { settingsModel.expanded = ["cpu", "temperature", "fan"] }
-            if CommandLine.arguments.contains("fanedit") { settingsModel.expanded = ["fan", "fanCurve", "fanRules"]; settingsModel.scrollTarget = "fan" }
+            if CommandLine.arguments.contains("fanedit") { settingsModel.page = .fan; settingsModel.expanded = ["fanCurve", "fanRules"] }
             if CommandLine.arguments.contains("donate") { settingsModel.showDonate = true }
             SoundController.fillDemo(SoundController.shared.panel)
-            view = AnyView(SettingsView(model: settingsModel, flat: true).frame(width: 680, height: 560))
+            // tall：画整页（不截在 560 高），用来裁 README 截图
+            view = AnyView(SettingsView(model: settingsModel, flat: true).frame(width: 680, height: CommandLine.arguments.contains("tall") ? 1500 : 560))
         case "curve":
             let fan = Fan.readAll().first
             let model = CurveEditorModel(minimum: fan?.minimum ?? 1000, maximum: fan?.maximum ?? 4900)
@@ -824,11 +847,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             guard let self, self.shownMetric == .network else { return }
             self.panel.connection = info
         }
-        // 从面板进入设置：当前面板对应的项在设置里有详细选项（网速、风扇、帧率）就直接展开它
+        // 从面板进入设置：风扇面板到“风扇”页，网速、温度、帧率到“系统指标”页，其他到“灵动岛”页
         panel.onSettings = { [weak self] in
             guard let self else { return }
-            let id = "\(self.panel.metric)"
-            self.openSettings(page: .menuBar, expand: [Metric.network, .fan, .fps].contains(self.panel.metric) ? id : nil)
+            let metric = self.panel.metric
+            self.openSettings(page: metric == .fan ? .fan : [.network, .temperature, .fps].contains(metric) ? .metrics : .menuBar)
         }
         panel.onQuit = { NSApp.terminate(nil) }
         panel.onDiagnostics = { [weak self] in
@@ -871,7 +894,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             DispatchQueue.main.asyncAfter(deadline: .now() + 3) { [weak self] in
                 guard let self else { return }
                 self.panel.quitting.remove(row.id)
-                if ProcessControl.isRunning(row.pids) {
+                if ProcessControl.isRunning(row.id, pids: row.pids) {
                     self.panel.forceable.insert(row.id)
                     self.panel.footerNote = "\(row.name) 仍在运行，可以强制结束"
                 } else {
@@ -895,7 +918,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         panel.forceable.remove(row.id)
         DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in
             guard let self else { return }
-            self.panel.footerNote = ProcessControl.isRunning(row.pids) ? "\(row.name) 仍未结束" : "\(row.name) 已结束"
+            self.panel.footerNote = ProcessControl.isRunning(row.id, pids: row.pids) ? "\(row.name) 仍未结束" : "\(row.name) 已结束"
             self.refreshPanel()
         }
     }
@@ -915,6 +938,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         settingsModel.onMetricOrder = { [weak self] in self?.metricOrderChanged() }
         settingsModel.onFullScreenFloatingIsland = { [weak self] in self?.setFullScreenFloatingIsland($0) }
         settingsModel.onFreeFloatingIsland = { [weak self] in self?.setFreeFloatingIsland($0) }
+        settingsModel.onIslandScreen = { [weak self] in self?.setIslandScreen($0) }
         settingsModel.onFloatingIsland = { [weak self] in self?.setFloatingIsland($0) }
         settingsModel.onKeepLeftmost = { [weak self] in self?.moveToLeftmost() }   // 重新打开置顶：立即回到最左
         settingsModel.onUnits = { [weak self] in
@@ -1002,20 +1026,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         }
         showItem.submenu = showMenu
         menu.addItem(showItem)
-        let split = NSMenuItem(title: "分体胶囊", action: #selector(menuToggleSplit), keyEquivalent: "")
+        // 写成要切换到的那种形态 / 显示方式，不用勾选：分体时给“合并胶囊”，悬浮时给“在菜单栏显示”
+        let split = NSMenuItem(title: MetricsIslandView.splits ? "合并胶囊" : "分体胶囊", action: #selector(menuToggleSplit), keyEquivalent: "")
         split.target = self
-        split.state = MetricsIslandView.splits ? .on : .off
         menu.addItem(split)
-        // 写成要切换到的那种显示方式，不用勾选：悬浮时给“在菜单栏显示”，在菜单栏时给“悬浮显示”
         let floating = NSMenuItem(title: Self.floatsIsland ? "在菜单栏显示" : "悬浮显示", action: #selector(menuToggleFloating), keyEquivalent: "")
         floating.target = self
         menu.addItem(floating)
-        // 扩展功能
-        menu.addItem(.separator())
-        let smooth = NSMenuItem(title: "平滑滚动", action: #selector(menuToggleSmoothScroll), keyEquivalent: "")
-        smooth.target = self
-        smooth.state = SmoothScrollController.shared.enabled ? .on : .off
-        menu.addItem(smooth)
         // 应用本身：设置、关于（打开窗口的项带“…”）
         menu.addItem(.separator())
         let settings = NSMenuItem(title: "设置…", action: #selector(menuOpenSettings), keyEquivalent: ",")
@@ -1027,10 +1044,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         menu.addItem(.separator())
         menu.addItem(NSMenuItem(title: "退出 islet", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
         return menu
-    }
-
-    @objc private func menuToggleSmoothScroll() {
-        SmoothScrollController.shared.setEnabled(!SmoothScrollController.shared.enabled)
     }
 
     /// 鼠标当前在岛上哪一段。
@@ -1066,20 +1079,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         if id == Self.metricsModule {
             settingsModel.setMetricsShown(!Metric.groupShown)
         } else {
-            let on = !settingsModel.isVisible(id)
-            // 隐藏的项在顺序里排在最后（蓝牙后面）；重新显示指标时按默认顺序插回去：
-            // 放在默认顺序里排在它后面、且正在显示的第一个指标前面；没有就接在最后一个显示中的指标后面。
-            // 否则分体时它会跑到蓝牙右边，自成一个胶囊
-            if on, !Self.isModule(id) {
-                var order = settingsModel.islandOrder.filter { $0 != id }
-                let rank = { (x: String) in MetricOrder.standard.firstIndex { "\($0)" == x } ?? .max }
-                let index = order.firstIndex { !Self.isModule($0) && isShownOnIsland($0) && rank($0) > rank(id) }
-                    ?? order.lastIndex { !Self.isModule($0) && isShownOnIsland($0) }.map { $0 + 1 }
-                    ?? order.firstIndex(of: "bluetooth") ?? order.count
-                order.insert(id, at: index)
-                IslandOrder.save(order)
-                settingsModel.islandOrder = IslandOrder.items
-            }
+            let on = !settingsModel.isVisible(id)   // 隐藏的项留在原位，再显示时回到原来的位置
             settingsModel.setVisible(id, on)
             settingsModel.onMetricOrder()
         }
@@ -1105,19 +1105,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         return false
     }
 
-    private func openSettings(page: SettingsPage? = nil, expand: String? = nil) {
+    private func openSettings(page: SettingsPage? = nil) {
         if let page { settingsModel.page = page }
-        if let expand {
-            settingsModel.expanded.insert(expand)
-            settingsModel.scrollTarget = expand
-        }
         popover.performClose(nil)
         updateControlTemperatures()
-        // 关闭设置时收起展开的项，下次打开是干净的列表
+        // 关闭设置时收起风扇页展开的编辑器，下次打开是干净的
         windows.show("settings", title: "islet 设置", size: NSSize(width: 720, height: 620), resizable: true,
                      onClose: { [weak self] in
                         self?.settingsModel.expanded = []
-                        DisplayManager.shared.collapseAll()
                      }) {
             SettingsView(model: settingsModel)
         }
@@ -1572,12 +1567,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         Task { await meter?.stop() }
     }
 
+    /// 系统真的睡眠时才把风扇交还系统；只熄屏（保持唤醒、熄屏渲染）时风扇照常按曲线调速。
+    @objc private func systemWillSleep() {
+        FanHelperClient.shared.suspend()
+        willSleep()
+    }
+
+    @objc private func systemDidWake() {
+        FanHelperClient.shared.resume()
+        didWake()
+    }
+
+    /// 熄屏、切换用户、系统睡眠：停掉界面和采样。
     @objc private func willSleep() {
         LongHistory.shared.save()
-        if !sleeping {
-            FanHelperClient.shared.suspend()
-            SpectrumController.shared.suspend()
-        }
+        if !sleeping { SpectrumController.shared.suspend() }
         TrafficLedger.shared.save()
         sleeping = true
         stopFPSMeter()
@@ -1592,14 +1596,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     }
 
     @objc private func didWake() {
-        if sleeping {
-            FanHelperClient.shared.resume()
-            SpectrumController.shared.resume()
-        }
+        if sleeping { SpectrumController.shared.resume() }
         sleeping = false
         resetSampling()
         refresh()
         updateIsland()   // 睡眠时收起了悬浮窗：唤醒后直接放回来，不等指标数值变化
+    }
+
+    /// 用量按网卡累计字节数的差值记，不看间隔：熄屏、睡眠期间停了采样，醒来后把这段补上。
+    /// 只在网卡组合不变、计数没归零时记（网卡变化时丢一个间隔，和网速一样）。
+    private var trafficMark: Traffic?
+    private func countTraffic(_ sample: Traffic?) {
+        defer { trafficMark = sample ?? trafficMark }
+        guard let sample, let mark = trafficMark, sample.interface == mark.interface,
+              sample.upload >= mark.upload, sample.download >= mark.download else { return }
+        TrafficLedger.shared.add(down: Double(sample.download - mark.download), up: Double(sample.upload - mark.upload))
     }
 
     private func resetSampling() {
@@ -1620,6 +1631,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         refreshSystem()
         let sample = readTraffic()
         defer { previous = sample }
+        countTraffic(sample)
         guard let sample else {
             display(upload: "—", download: "—", detail: "未检测到可用的网卡")
             return
@@ -1635,17 +1647,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         lastRates = rates
         peakDownload = max(peakDownload, rates.download)
         record(.network, rates.download, rates.upload)
-        TrafficLedger.shared.add(down: Double(sample.download - previous.download), up: Double(sample.upload - previous.upload))
         if shownMetric == .network { panel.traffic = TrafficLedger.shared.current() }
         display(upload: upload, download: download, detail: "上传 \(upload)   下载 \(download)", rates: rates)
     }
 
-    /// 只采集菜单栏上显示的、或面板正在看的指标。
-    private func wants(_ metric: Metric) -> Bool { metric.isShown || shownMetric == metric }
+    /// 只采集菜单栏上显示的、面板正在看的，以及有提醒规则在盯的指标（隐藏了也要照常提醒）。
+    private func wants(_ metric: Metric) -> Bool { displays(metric) || alertMetrics.contains(metric) }
+    private func displays(_ metric: Metric) -> Bool { metric.isShown || shownMetric == metric }
+    /// 启用的提醒规则涉及的指标，每次刷新开头读一次（规则存在偏好里，不在每个指标上反复解码）
+    private var alertMetrics: Set<Metric> = []
 
     /// 更新各指标的菜单栏图标，以及对应面板的主数据卡。
     private func refreshSystem() {
         let shown = shownMetric
+        alertMetrics = Set(AlertCenter.rules.filter(\.enabled).map(\.kind.metric))
         // 功耗：菜单栏、风扇、温度以及多数面板的数据卡都会用到，读一次 SMC 键即可
         let watts = wants(.power) || wants(.fan) || wants(.temperature) || shown != nil ? PowerStats.systemWatts() : nil
         if let watts { peakWatts = max(peakWatts, watts) }
@@ -1666,7 +1681,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             }
             let performance = Self.sysctlInt("hw.perflevel0.physicalcpu") ?? 0
             let efficiency = Self.sysctlInt("hw.perflevel1.physicalcpu") ?? 0
-            heroes[.cpu] = HeroData(fraction: usage, tone: .load, toneValue: usage,
+            heroes[.cpu] = HeroData(fraction: usage, level: Metric.cpu.level(usage),
                                     value: usage.map { "\(Int(($0 * 100).rounded()))" } ?? "—", unit: "% 占用",
                                     rows: [("核心", performance > 0 ? "\(performance) 性能 + \(efficiency) 能效" : "\(ProcessInfo.processInfo.activeProcessorCount) 核"),
                                            ("温度", degrees(groupAverage("CPU 性能核"))),
@@ -1680,7 +1695,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             setIcon(.gpu, key: "\(text)|\(level)", value: text) {
                 StatusIcons.labeled("GPU", value: text, level: level, widest: "100%")
             }
-            heroes[.gpu] = HeroData(fraction: usage, tone: .load, toneValue: usage,
+            heroes[.gpu] = HeroData(fraction: usage, level: Metric.gpu.level(usage),
                                     value: usage.map { "\(Int(($0 * 100).rounded()))" } ?? "—", unit: "% 占用",
                                     rows: [("核心", gpuCores.map { "\($0) 核" } ?? "—"),
                                            ("温度", degrees(groupAverage("GPU"))),
@@ -1688,16 +1703,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         }
         if wants(.memory), let memory = MemoryStats.read() {
             let text = Self.compactMemory(memory.used)
-            // 只有“严重”才变红；“偏高”在很多 Mac 上是常态，不提示
-            let level: StatusIcons.Level = memory.pressure == 4 ? .critical : .normal
+            // 内存压力偏高变橙、严重变红（和 CPU 等一样持续 5 秒才变）
+            let level = sustainedLevel(.memory, Double(memory.pressure))
             setIcon(.memory, key: "\(text)|\(level)", value: "已用 \(text)，内存压力\(memory.pressureText)") {
                 StatusIcons.labeled("MEM", value: text, level: level, widest: "88.8G")
             }
             let gib = 1_073_741_824.0
             let fraction = Double(memory.used) / Double(max(memory.total, 1))
             record(.memory, Double(memory.used) / 1_073_741_824)
-            heroes[.memory] = HeroData(fraction: fraction, tone: .load,
-                                       toneValue: memory.pressure == 4 ? 0.95 : memory.pressure == 2 ? 0.75 : 0.3,
+            heroes[.memory] = HeroData(fraction: fraction, level: Metric.memory.level(Double(memory.pressure)),
                                        value: String(format: "%.1f", Double(memory.used) / gib), unit: "GB 已用",
                                        rows: [("总量", String(format: "%.0f GB", Double(memory.total) / gib)),
                                               ("压力", memory.pressureText),
@@ -1714,13 +1728,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             let used = diskCapacity.used
             let text = Self.percent(used)
             setIcon(.disk, key: text, value: "已用 \(text)") {
-                StatusIcons.labeled("DISK", value: text, level: .init(used, warn: 0.85, alarm: 0.95), widest: "100%")
+                StatusIcons.labeled("DISK", value: text, level: Metric.disk.level(used), widest: "100%")
             }
-            heroes[.disk] = HeroData(fraction: used, tone: .load, toneValue: used.map { $0 >= 0.95 ? 0.95 : $0 >= 0.85 ? 0.75 : 0.3 },
+            heroes[.disk] = HeroData(fraction: used, level: Metric.disk.level(used),
                                      value: used.map { "\(Int(($0 * 100).rounded()))" } ?? "—", unit: "% 已用",
                                      rows: [("可用", diskCapacity.available.map(Self.diskSize) ?? "—"),
-                                            ("读取", rates.map { "\(Self.compactRate($0.read))/s" } ?? "—"),
-                                            ("写入", rates.map { "\(Self.compactRate($0.write))/s" } ?? "—")])
+                                            ("读取", rates.map { "\(Self.spaced(Self.compactRate($0.read)))/s" } ?? "—"),
+                                            ("写入", rates.map { "\(Self.spaced(Self.compactRate($0.write)))/s" } ?? "—")])
         } else {
             previousDisk = nil
         }
@@ -1732,8 +1746,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             setIcon(.power, key: "\(text)|\(awake)", value: awake ? "\(text)，保持唤醒中" : text) {
                 StatusIcons.labeled(awake ? "AWAKE" : "PWR", value: text, level: .normal, widest: "88W")
             }
-            heroes[.power] = HeroData(fraction: watts.map { $0 / peakWatts }, tone: .accent,
-                                      value: watts.map { String(format: $0 >= 10 ? "%.0f" : "%.1f", $0) } ?? "—", unit: "瓦",
+            heroes[.power] = HeroData(fraction: watts.map { $0 / peakWatts },
+                                      value: watts.map { String(format: $0 >= 10 ? "%.0f" : "%.1f", $0) } ?? "—", unit: "W 功耗",
                                       rows: [("峰值", String(format: "%.0f W", peakWatts)),
                                              ("温度", degrees(groupAverage("CPU 性能核") ?? lastTemperature)),
                                              ("风扇", fan.map { "\(Int($0.current.rounded())) 转" } ?? "—")])
@@ -1746,13 +1760,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             let headline = lastTemperature
             record(.temperature, headline)
             let text = headline.map(Units.degrees) ?? "—"
-            let level = sustainedLevel(.temperature, headline, threshold: 95)
+            let level = sustainedLevel(.temperature, headline)
             setIcon(.temperature, key: "\(text)|\(level)", value: headline.map { "\(Int($0.rounded())) 摄氏度" } ?? "暂无数据") {
                 StatusIcons.labeled("TEMP", value: text, level: level, widest: "108°")
             }
             let hottest = groups.max { $0.maximum < $1.maximum }
-            heroes[.temperature] = HeroData(fraction: headline.map { $0 / 110 }, tone: .temperature, toneValue: headline,
-                                            value: headline.map { "\(Int(Units.temperature($0).rounded()))" } ?? "—", unit: "\(Units.temperatureUnit) 性能核",
+            heroes[.temperature] = HeroData(fraction: headline.map { $0 / 110 }, level: Metric.temperature.level(headline),
+                                            value: headline.map { "\(Int(Units.temperature($0).rounded()))" } ?? "—", unit: "° 性能核",
                                             rows: [("最热", hottest.map { "\(Units.degrees($0.maximum)) \($0.name)" } ?? "—"),
                                                    ("风扇", fan.map { "\(Int($0.current.rounded())) 转" } ?? "—"),
                                                    ("功耗", watts.map { String(format: "%.1f W", $0) } ?? "—")])
@@ -1775,7 +1789,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
                 mode = client.config.strategy.label + (manual ? "" : "（系统控制中）")
             }
             heroes[.fan] = HeroData(fraction: fan.map { ($0.current - $0.minimum) / max($0.maximum - $0.minimum, 1) },
-                                    tone: .accent, value: text, unit: "RPM",
+                                    value: text, unit: "转 当前转速",
                                     rows: [("目标", target.map { "\(Int($0.rounded()))" } ?? "—"),
                                            ("区间", fan.map { "\(Int($0.minimum))–\(Int($0.maximum))" } ?? "—"),
                                            ("模式", mode)])
@@ -1787,8 +1801,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             setIcon(.fps, key: text, value: fpsValue.map { "\($0) 帧每秒" } ?? fpsStatus) {
                 StatusIcons.labeled("FPS", value: text, level: .normal, widest: "120")
             }
-            heroes[.fps] = HeroData(fraction: fpsValue.map { Double($0) / Double(max(fpsRefresh, 1)) }, tone: .accent,
-                                    value: text, unit: "帧 / 秒",
+            heroes[.fps] = HeroData(fraction: fpsValue.map { Double($0) / Double(max(fpsRefresh, 1)) },
+                                    value: text, unit: "fps 帧率",
                                     rows: [("屏幕", fpsTarget), ("刷新率", "\(fpsRefresh) Hz"), ("状态", fpsStatus)])
         } else {
             stopFPSMeter()
@@ -1838,11 +1852,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         switch metric {
         case .cpu, .gpu: return String(format: "%.0f%%", value)
         case .memory: return String(format: "%.1f GB", value)
-        case .disk: return compactRate(value) + "/s"
-        case .network: return Units.networkRate(value) + "/s"
+        case .disk: return spaced(compactRate(value)) + "/s"
+        case .network: return spaced(Units.networkRate(value)) + "/s"
         case .power: return String(format: "%.1f W", value)
         case .fan: return "\(Int(value)) 转"
-        case .temperature: return "\(Int(Units.temperature(value).rounded()))\(Units.temperatureUnit)"
+        case .temperature: return Units.degrees(value)
         case .fps: return "\(Int(value)) 帧"
         }
     }
@@ -1873,19 +1887,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
 
     /// key 没变就不重绘，避免每秒都让菜单栏重新布局。
     /// 连续 5 秒以上不低于阈值才变红（CPU / GPU 90%，温度 95°），避免瞬时冲高时闪烁。
-    private func sustainedLevel(_ metric: Metric, _ value: Double?, threshold: Double = 0.9) -> StatusIcons.Level {
-        guard let value, value >= threshold else {
+    /// 岛上的变色：阈值和面板共用（Metric.level），但要持续 5 秒才变，免得短暂冲高时来回闪。
+    private func sustainedLevel(_ metric: Metric, _ value: Double?) -> StatusIcons.Level {
+        let level = metric.level(value)
+        guard level != .normal else {
             hotSince[metric] = nil
             return .normal
         }
         let now = ProcessInfo.processInfo.systemUptime
         let since = hotSince[metric] ?? now
         hotSince[metric] = since
-        return now - since >= 5 ? .critical : .normal
+        return now - since >= 5 ? level : .normal
     }
 
     private func setIcon(_ metric: Metric, key: String, value: String, image: () -> NSImage) {
-        guard renderRequest == nil else { return }
+        guard renderRequest == nil, displays(metric) else { return }   // 只为提醒采集的指标不画图标
         accessibilityValues[metric] = value
         guard iconKeys[metric] != key else { return }
         iconKeys[metric] = key
@@ -1910,8 +1926,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private func display(upload: String, download: String, detail: String, rates: (upload: Double, download: Double)? = nil) {
         let (number, unit) = Self.splitRate(download)
         heroes[.network] = HeroData(fraction: lastRates.map { $0.download / peakDownload }, value: number, unit: unit.isEmpty ? "下载" : "\(unit)/s 下载",
-                                    rows: [("上传", upload == "—" ? "—" : "\(upload)/s"),
-                                           ("下载", download == "—" ? "—" : "\(download)/s"),
+                                    rows: [("上传", upload == "—" ? "—" : "\(Self.spaced(upload))/s"),
+                                           ("下载", download == "—" ? "—" : "\(Self.spaced(download))/s"),
                                            ("网卡", interfaceLabel)])
         if shownMetric == .network { updateHero() }
         // 有效速率才算活动；"—"（等待数据）和 "0KB" 都显示为暗箭头
@@ -1927,14 +1943,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
 
     static func formatter(for metric: Metric) -> (Double) -> String {
         switch metric {
-        case .network: return Units.networkRate
-        case .disk: return compactRate
+        case .network: return { spaced(Units.networkRate($0)) }
+        case .disk: return { spaced(compactRate($0)) }
         case .cpu, .gpu: return { String(format: $0 >= 10 ? "%.0f%%" : "%.1f%%", $0) }
         case .memory: return memorySize
         case .power, .fan: return { String(format: $0 >= 10 ? "%.0f W" : "%.1f W", $0) }
         case .temperature: return { Units.degrees($0) }
         case .fps: return { "\(Int($0))" }
         }
+    }
+
+    /// 面板里数字和单位之间加空格："1.6MB" → "1.6 MB"（岛上为了省宽度不加）。
+    static func spaced(_ text: String) -> String {
+        let (number, unit) = splitRate(text)
+        return unit.isEmpty || number.isEmpty ? text : "\(number) \(unit)"
     }
 
     /// "1.6MB" → ("1.6", "MB")，用于主数据卡的大数字与单位。
