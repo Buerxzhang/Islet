@@ -717,7 +717,7 @@
   }
   let checking = false;
   function aboutPage() {
-    return `<div class="about"><img src="icon.png" alt=""><div><div><b>islet</b> <small>v1.4.0 (79)</small></div><div class="sub">菜单栏里的灵动岛</div></div></div>` +
+    return `<div class="about"><img src="icon-b1a28c54b977.png" alt=""><div><div><b>islet</b> <small>v1.4.0 (79)</small></div><div class="sub">菜单栏里的灵动岛</div></div></div>` +
       section("项目", row("Buerxzhang / islet", "GitHub 开源项目", `<span class="btns"><a class="pbtn" href="./">官网</a><a class="pbtn" href="https://github.com/Buerxzhang/islet" target="_blank" rel="noopener">GitHub</a><a class="pbtn" href="https://github.com/Buerxzhang/islet" target="_blank" rel="noopener">★ Star</a></span>`, tile("#1d1d1f", '<path d="M8 8l-4 4 4 4M16 8l4 4-4 4M14 5l-4 14"/>'))) +
       section("更新", join(
         row(checking ? "软件更新" : "已是最新版本", checking ? "正在查询 GitHub…" : "当前是 1.4.0", btn(checking ? "检查中…" : "检查更新", 'data-check="1"'), tile("#0a84ff", '<path d="M20 12a8 8 0 1 1-2.3-5.7M20 4v4h-4"/>')),
@@ -1122,7 +1122,7 @@
         `<div class="sec">输出</div><div class="pc">${devices.map(([ic, n], i) => `<div class="dev${i === S.device ? " sel" : ""}" data-dev="${i}"><span class="di">${svgIcon(ic)}</span><span>${n}</span><span></span></div>`).join("")}</div>`;
     } else {
       const all = [...(notesCleared ? [] : lowNotes()), ...notes];
-      pops.notif.innerHTML = `<h4>通知</h4>` + (all.length ? all.map((n) => `<div class="note"><img src="icon.png" alt=""><div><b>${n.t}</b><span>${n.b}</span></div><time>${n.time}</time></div>`).join("") + '<button class="clear">全部清除</button>' : '<div class="empty">没有新通知</div>');
+      pops.notif.innerHTML = `<h4>通知</h4>` + (all.length ? all.map((n) => `<div class="note"><img src="icon-b1a28c54b977.png" alt=""><div><b>${n.t}</b><span>${n.b}</span></div><time>${n.time}</time></div>`).join("") + '<button class="clear">全部清除</button>' : '<div class="empty">没有新通知</div>');
     }
   }
   let openPop = null;
@@ -1163,7 +1163,7 @@
   ];
   dockEl.innerHTML = DOCK.map((d) => d === "gap" ? '<span class="gap"></span>'
     : `<div class="app${d.img ? " run" : ""}"${d.open ? ` data-open="${d.open}"` : ""}${d.page ? ` data-page="${d.page}"` : ""}${d.href ? ` data-href="${d.href}"` : ""}>` +
-      (d.img ? '<img class="ic" src="icon.png" alt="islet">' : `<div class="ic" style="background:${tileBg(d.color)}"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${d.path}</svg></div>`) +
+      (d.img ? '<img class="ic" src="icon-b1a28c54b977.png" alt="islet">' : `<div class="ic" style="background:${tileBg(d.color)}"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${d.path}</svg></div>`) +
       `<span class="tip">${d.tip}</span></div>`).join("");
   const dockApps = [...dockEl.querySelectorAll(".app")];
 
