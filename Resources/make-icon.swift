@@ -4,11 +4,13 @@ import SwiftUI
 // 生成 islet 的应用图标：天蓝底上一枚纯白色胶囊（灵动岛），里面左边一个圆点（正在播放），
 // 右边一条脉搏线（系统指标）。纯色扁平，没有光晕和阴影。
 // 用法：swift Resources/make-icon.swift <输出 .iconset 目录>
+// 加 --layer 输出透明背景、圆点和脉搏镂空的胶囊图层。
 // 坐标系为 1024×1024（苹果图标网格），按目标像素缩放绘制。
 
 let directory = URL(fileURLWithPath: CommandLine.arguments[1], isDirectory: true)
 let sizes = [16, 32, 128, 256, 512]
 let canvas: CGFloat = 1024
+let layerOnly = CommandLine.arguments.contains("--layer")
 
 func color(_ hex: UInt32) -> NSColor {
     NSColor(srgbRed: CGFloat((hex >> 16) & 0xff) / 255, green: CGFloat((hex >> 8) & 0xff) / 255,
@@ -32,8 +34,10 @@ func capsule(_ rect: NSRect) -> NSBezierPath {
 }
 
 func drawIcon(pixels: Int) {
-    tileColor.setFill()
-    squircle().fill()
+    if !layerOnly {
+        tileColor.setFill()
+        squircle().fill()
+    }
 
     // 胶囊
     let pill = NSRect(x: 512 - 360, y: 512 - 150, width: 720, height: 300)
@@ -44,6 +48,8 @@ func drawIcon(pixels: Int) {
     let dot: CGFloat = 160, gap: CGFloat = 46, pulse: CGFloat = 330
     var x = 512 - (dot + gap + pulse) / 2
     let y: CGFloat = 512
+    NSGraphicsContext.current?.cgContext.saveGState()
+    if layerOnly { NSGraphicsContext.current?.cgContext.setBlendMode(.clear) }
     inkColor.setFill()
     NSBezierPath(ovalIn: NSRect(x: x, y: y - dot / 2, width: dot, height: dot)).fill()
     x += dot + gap
@@ -61,6 +67,7 @@ func drawIcon(pixels: Int) {
     line.lineJoinStyle = .round
     inkColor.setStroke()
     line.stroke()
+    NSGraphicsContext.current?.cgContext.restoreGState()
 }
 
 func render(pixels: Int) -> NSBitmapImageRep {

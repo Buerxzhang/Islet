@@ -1,0 +1,29 @@
+name: Compile layered app icon
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  compile:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Select Xcode with Icon Composer support
+        shell: bash
+        run: |
+          developer_app=$(find /Applications -maxdepth 1 -name 'Xcode*.app' | sort -V | tail -1)
+          sudo xcode-select --switch "$developer_app/Contents/Developer"
+          xcodebuild -version
+      - name: Compile layered icon
+        run: |
+          mkdir -p compiled-icon
+          xcrun actool Resources/islet.icon             --compile compiled-icon             --app-icon islet             --platform macosx             --target-device mac             --minimum-deployment-target 14.0             --output-partial-info-plist compiled-icon/icon-info.plist             --errors --warnings
+          test -s compiled-icon/Assets.car
+      - uses: actions/upload-artifact@v4
+        with:
+          name: layered-icon
+          path: compiled-icon/
+          if-no-files-found: error
