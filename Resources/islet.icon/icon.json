@@ -12,17 +12,31 @@
         {
           "image-name": "capsule.png",
           "name": "Capsule",
-          "glass": false
+          "glass": false,
+          "blend-mode": "normal",
+          "opacity": 1,
+          "fill": {
+            "solid": "extended-gray:1.00000,1.00000"
+          },
+          "position": {
+            "scale": 1.2427184466019416,
+            "translation-in-points": [
+              0,
+              0
+            ]
+          }
         }
       ],
       "shadow": {
-        "kind": "neutral",
+        "kind": "none",
         "opacity": 0
       },
       "translucency": {
         "enabled": false,
         "value": 0
-      }
+      },
+      "lighting": "individual",
+      "specular": false
     }
   ],
   "supported-platforms": {
