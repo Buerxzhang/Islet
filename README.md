@@ -4,7 +4,7 @@
 
 <h1 align="center">islet</h1>
 
-<p align="center">官网：<a href="https://buerxzhang.github.io/islet/">buerxzhang.github.io/islet</a>（可以在网页里直接点着体验）</p>
+<p align="center">官网：<a href="https://buerxzhang.github.io/islet/">buerxzhang.github.io/islet</a></p>
 
 <p align="center">
   <a href="https://github.com/Buerxzhang/islet/releases/latest"><img alt="Download" src="https://img.shields.io/github/v/release/Buerxzhang/islet?label=download&logo=apple&logoColor=white&color=2ea44f"></a>
