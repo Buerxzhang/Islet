@@ -1,7 +1,7 @@
 import AppKit
 import SwiftUI
 
-// 生成 islet 的应用图标：天蓝底上一枚米白色胶囊（灵动岛），里面左边一个圆点（正在播放），
+// 生成 islet 的应用图标：天蓝底上一枚纯白色胶囊（灵动岛），里面左边一个圆点（正在播放），
 // 右边一条脉搏线（系统指标）。纯色扁平，没有光晕和阴影。
 // 用法：swift Resources/make-icon.swift <输出 .iconset 目录>
 // 坐标系为 1024×1024（苹果图标网格），按目标像素缩放绘制。
@@ -17,7 +17,7 @@ func color(_ hex: UInt32) -> NSColor {
 
 // 底色 #0096D6：取自官网背景渐变（#00ECBC → #007ADF），也是 islet 的主题色；第二个参数可以临时换色看效果，如 007ADF
 let tileColor = color(CommandLine.arguments.count > 2 ? UInt32(CommandLine.arguments[2], radix: 16) ?? 0x0096D6 : 0x0096D6)
-let pillColor = color(0xF4EEE3)   // 米白
+let pillColor = color(0xFFFFFF)   // 纯白
 let inkColor = tileColor          // 圆点和脉搏线与底色同色，像在胶囊上挖出来的
 
 /// 苹果图标网格：1024 画布里 824 的连续圆角方块。形状不标准时程序坞会把图标缩小放进灰底框。
