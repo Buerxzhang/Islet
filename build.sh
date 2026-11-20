@@ -22,6 +22,8 @@ helper_dir="$app/Contents/Library/FanHelper"
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources" "$helper_dir"
 cp Resources/Info.plist "$app/Contents/Info.plist"
 cp Resources/islet.icns "$app/Contents/Resources/islet.icns"
+# 分层图标由 compile-icon 工作流编译，旧系统继续使用 islet.icns。
+cp Resources/Assets.car "$app/Contents/Resources/Assets.car"
 cp docs/donate/alipay.png docs/donate/wechat.png "$app/Contents/Resources/"   # 关于页的打赏二维码
 
 # 主程序源码：Sources 下全部 .swift（新增文件放进去即可，不用改这里）

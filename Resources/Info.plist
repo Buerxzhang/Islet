@@ -6,6 +6,8 @@
 	<string>islet</string>
 	<key>CFBundleExecutable</key>
 	<string>islet</string>
+	<key>CFBundleIconName</key>
+	<string>islet</string>
 	<key>CFBundleIconFile</key>
 	<string>islet.icns</string>
 	<key>CFBundleIdentifier</key>
