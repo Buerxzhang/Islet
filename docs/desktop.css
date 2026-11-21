@@ -443,3 +443,6 @@ html.desk.pn-light { --bg: #fbfaf7; --card: #ffffff; --text: #16171d; --text2: #
 .settings .item .nm .chev { font-style: normal; color: var(--pn-text3); margin-left: 6px; display: inline-block; transition: transform .18s; }
 .settings .item .nm .chev.open { transform: rotate(90deg); }
 .settings .item .nm[data-mets] { cursor: pointer; }
+.settings .pnotes { margin: 4px 4px 0; }
+.settings .pnotes p { margin: 0 0 6px; color: var(--pn-text3); font-size: 11px; line-height: 1.6; }
+.settings .pnotes b { color: var(--pn-text2); font-weight: 500; }

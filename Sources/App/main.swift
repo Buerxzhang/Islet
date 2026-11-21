@@ -54,6 +54,17 @@ struct Traffic {
     }
 }
 
+extension NSPopover {
+    /// 弹出面板默认跟锚点窗口同层；悬浮胶囊在 .floating（3）层，面板会被别的应用的浮动、模态窗口盖住。
+    /// 弹出后抬到至少状态栏层（25），全屏悬浮的 28 层保持不变，仍低于系统弹出菜单（101）。
+    func showAboveApps(relativeTo rect: NSRect, of view: NSView, preferredEdge: NSRectEdge) {
+        show(relativeTo: rect, of: view, preferredEdge: preferredEdge)
+        guard let window = contentViewController?.view.window else { return }
+        let anchorLevel = view.window?.level.rawValue ?? 0
+        window.level = NSWindow.Level(rawValue: max(anchorLevel, NSWindow.Level.statusBar.rawValue))
+    }
+}
+
 final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     /// 蓝牙设备图像（画在灵动岛末尾）。
     private var bluetoothImage: NSImage?
@@ -1212,7 +1223,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         if metric == .power { panel.battery = BatteryInfo.read() }
         if metric == .disk { panel.volumes = ExternalVolumes.list() }
         render(result, metric: metric)
-        popover.show(relativeTo: anchor ?? button.bounds, of: button, preferredEdge: .minY)
+        popover.showAboveApps(relativeTo: anchor ?? button.bounds, of: button, preferredEdge: .minY)
         guard popover.isShown else { shownMetric = nil; return }
         if anchor != nil { island.view.selected = metric }
         watchOutsideClicks()

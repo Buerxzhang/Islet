@@ -614,8 +614,7 @@
         row("灵敏度", "", sg("sens", ["低", "标准", "高"], 190)), row("系统录音权限", "不录麦克风", btn("打开权限设置")));
       case "fan": return d(row("调速依据温度", "CPU/GPU 均温 · " + Math.round(S.temp) + "°C", sg("fanBasis", ["最高温度", "平均温度"], 200)),
         row("温度曲线", "预设：" + S.preset, btn("编辑", 'data-fan-edit="1"')), row("规则", "2 条 · 启用 2 条", btn("编辑", 'data-fan-edit="1"')),
-        row("控制组件", "已安装，正常", btn("卸载")), row("退出时交还系统", "", '<small class="muted">始终开启</small>'),
-        '<p class="note">通过未公开的接口调速，系统升级后可能失效。转速有安全下限、不会停转；异常时切回“自动”或卸载组件。</p>');
+        row("控制组件", "已安装，正常", btn("卸载")), row("退出时交还系统", "", '<small class="muted">始终开启</small>'));
       case "net": return d(row("显示方式", "自动：只显示较快的一方", sg("netMode", ["自动", "上传和下载"], 180)), row("单位", "", sg("netUnit", ["MB/s", "Mb/s"], 160)),
         row("流量统计每月起始日", "对齐运营商账单", `<select class="sel" data-month="1">${Array.from({ length: 28 }, (_, i) => `<option value="${i + 1}"${SET.monthStart === i + 1 ? " selected" : ""}>${i + 1} 日</option>`).join("")}</select>`),
         row("清零流量统计", "", btn("清零", 'data-clear="1"')));
@@ -665,7 +664,7 @@
   function islandPage() {
     return `` +
       section("胶囊", join(
-        row("悬浮显示", "", tg("float"), tile("#0a84ff", '<rect x="4" y="4" width="12" height="12" rx="2"/><rect x="8" y="8" width="12" height="12" rx="2"/>')),
+        row("显示位置", "", `<div class="sg" style="width:140px"><button data-float="1" class="${SET.float ? "sel" : ""}">悬浮</button><button data-float="0" class="${SET.float ? "" : "sel"}">菜单栏</button></div>`, tile("#0a84ff", '<rect x="4" y="4" width="12" height="12" rx="2"/><rect x="8" y="8" width="12" height="12" rx="2"/>')),
         SET.float ? row("全屏时保持悬浮", "", tg("fullFloat"), tile("#0a84ff", '<path d="M4 9V4h5M20 15v5h-5M4 4l6 6M20 20l-6-6"/>')) : "",
         SET.float ? row("自由拖动", "", tg("freeDrag"), tile("#0a84ff", '<path d="M8 13V5.5a1.5 1.5 0 0 1 3 0V12M11 11.5V4a1.5 1.5 0 0 1 3 0v8M14 6a1.5 1.5 0 0 1 3 0v7M17 8.5a1.5 1.5 0 0 1 3 0V15a6 6 0 0 1-6 6h-1a6 6 0 0 1-5-2.7L5 14a1.5 1.5 0 0 1 2.5-1.7L8 13"/>')) : "",
         SET.float ? "" : row("始终在菜单栏最左侧", "关闭后按住 ⌘ 拖动", tg("leftmost"), tile("#30d158", '<path d="M9 3h6l-1 6 3 3H7l3-3zM12 12v9"/>')),
@@ -676,7 +675,7 @@
           `<div class="sg" style="width:200px">${["渐变", "黑色", "玻璃"].map((o) => o === "玻璃" && !SET.float ? `<button class="dis" disabled>${o}</button>` : `<button data-set="bg" data-v="${o}" class="${(SET.bg === "玻璃" && !SET.float ? "渐变" : SET.bg) === o ? "sel" : ""}">${o}</button>`).join("")}</div>`,
           tile("#ff9f0a", '<circle cx="12" cy="12" r="9"/><circle cx="8" cy="10" r="1"/><circle cx="12" cy="7.5" r="1"/><circle cx="16" cy="10" r="1"/>')))) +
       `<div class="section" data-list="1"><div class="sh">显示内容</div>${displayList()}` +
-      (SET.order.some((id) => !isModule(id) && onIsland(id)) ? "" : '<p class="hint">指标全关时胶囊可能消失</p>') +
+
       `<div class="reset"><a href="#" data-reset="1">恢复默认显示和顺序</a></div></div>`;
   }
   // 显示器（和软件一致，以 27 寸 2K 屏为例）：开 HiDPI 后只列 islet 补上的 133%、143%、154%（200% 字太大不列），推荐 133%；
@@ -699,7 +698,7 @@
   }
   function extPage() {
     return section("鼠标滚动", join(
-        row("平滑滚动", SET.smooth ? "已启用，触控板不受影响" : "让有刻度的鼠标滚轮像触控板一样顺滑", tg("smooth"), tile("#0a84ff", '<rect x="7" y="3" width="10" height="18" rx="5" fill="#fff" stroke="none"/><path d="M12 6.5v4" stroke="#0a84ff"/>')),
+        row("平滑滚动", "", tg("smooth"), tile("#0a84ff", '<rect x="7" y="3" width="10" height="18" rx="5" fill="#fff" stroke="none"/><path d="M12 6.5v4" stroke="#0a84ff"/>')),
         SET.smooth ? row("滚动距离", "", sg("dist", ["短", "中", "长"], 170)) : "",
         SET.smooth ? row("平滑程度", "", sg("soft", ["低", "中", "高"], 170)) : "",
         SET.smooth ? row("反转滚动方向", "不影响触控板", tg("reverse")) : "")) +
@@ -729,19 +728,29 @@
   }
   let checking = false;
   function aboutPage() {
-    return `<div class="about"><img src="icon-b1a28c54b977.png" alt=""><div><div><b>islet</b> <small>v1.4.1 (80)</small></div><div class="sub">菜单栏里的灵动岛</div></div></div>` +
+    return `<div class="about"><img src="icon-b1a28c54b977.png" alt=""><div><div><b>islet</b> <small>v1.4.2 (81)</small></div><div class="sub">菜单栏里的灵动岛</div></div></div>` +
       section("项目", row("Buerxzhang / islet", "GitHub 开源项目", `<span class="btns"><a class="pbtn" href="./">官网</a><a class="pbtn" href="https://github.com/Buerxzhang/islet" target="_blank" rel="noopener">GitHub</a><a class="pbtn" href="https://github.com/Buerxzhang/islet" target="_blank" rel="noopener">★ Star</a></span>`, tile("#1d1d1f", '<path d="M8 8l-4 4 4 4M16 8l4 4-4 4M14 5l-4 14"/>'))) +
       section("更新", join(
-        row(checking ? "软件更新" : "已是最新版本", checking ? "正在查询 GitHub…" : "当前是 1.4.1", btn(checking ? "检查中…" : "检查更新", 'data-check="1"'), tile("#0a84ff", '<path d="M20 12a8 8 0 1 1-2.3-5.7M20 4v4h-4"/>')),
+        row(checking ? "软件更新" : "已是最新版本", checking ? "正在查询 GitHub…" : "当前是 1.4.2", btn(checking ? "检查中…" : "检查更新", 'data-check="1"'), tile("#0a84ff", '<path d="M20 12a8 8 0 1 1-2.3-5.7M20 4v4h-4"/>')),
         row("自动检查更新", "", tg("autoUpdate"), tile("#ff9f0a", '<path d="M6 16V11a6 6 0 0 1 12 0v5l2 2H4zM10 21h4" fill="#fff" stroke="none"/>')))) +
       section("诊断", row("自检通过，一切正常", "反馈时自动复制报告，粘贴即可", `<span class="btns">${btn("复制报告", 'data-copy="1"')}<a class="pbtn" href="https://github.com/Buerxzhang/islet/issues/new" target="_blank" rel="noopener">反馈问题</a></span>`, tile("#ff453a", '<path d="M6 4v5a4 4 0 0 0 8 0V4M10 13v2a5 5 0 0 0 10 0v-2"/><circle cx="20" cy="11" r="1.6"/>')));
   }
 
+  // 页尾说明（和软件一致）：行里只放标题和控件，较长的解释、注意事项统一放在页面最下面
+  const NOTES = {
+    灵动岛: [["胶囊", "玻璃样式仅在悬浮模式下生效。"], ["显示内容", "至少要保留一项。想完全不显示灵动岛，可以只保留音乐（不放歌时就不显示），或按 ⌘Q 退出 islet。"]],
+    音乐: [["频谱", "需要授权「系统录音」权限，只读取正在播放的声音来画频谱，不录麦克风。"], ["兼容性", "会自动识别「音乐」类软件；遇到不适配的软件，欢迎在「关于」页反馈。"]],
+    系统指标: [["帧率", "是前台窗口所在屏幕每秒画面变化的次数，画面静止时会变低。"]],
+    风扇: [["调速", "通过未公开的接口实现，系统升级后可能失效。转速有安全下限，退出 islet 或电脑睡眠时会交还系统。遇到异常，请把调速策略切回「自动」或卸载组件。"]],
+    蓝牙电量: [["电量", "由系统读取蓝牙设备上报的电量。各设备的协议不同，部分设备可能读不到或不准。"]],
+    扩展功能: [["HiDPI", "需要输入管理员密码写入系统配置，并且要显示器支持。打开后如果显示异常，请关掉它。"]],
+  };
+  const pageNotes = (page) => (NOTES[page] ? `<div class="pnotes">${NOTES[page].map(([t, x]) => `<p><b>「${t}」</b>${x}</p>`).join("")}</div>` : "");
   function renderSettings() {
     win.querySelector(".side").innerHTML = PAGES.map(([name, color, path], i) => (PAGE_SEP.has(i) ? '<div class="sep"></div>' : "") +
-      `<div class="nav${SET.page === name ? " sel" : ""}" data-page="${name}">${tile(color, path, 24)}<span>${name}</span>${name === "关于" ? "<small>v1.4.1</small>" : ""}</div>`).join("");
+      `<div class="nav${SET.page === name ? " sel" : ""}" data-page="${name}">${tile(color, path, 24)}<span>${name}</span>${name === "关于" ? "<small>v1.4.2</small>" : ""}</div>`).join("");
     const content = win.querySelector(".content"), scroll = content.scrollTop;
-    content.innerHTML = `<h3>${SET.page}</h3>` + { 灵动岛: islandPage, 扩展功能: extPage, 通用: generalPage, 关于: aboutPage, ...pageFns }[SET.page]();
+    content.innerHTML = `<h3>${SET.page}</h3>` + { 灵动岛: islandPage, 扩展功能: extPage, 通用: generalPage, 关于: aboutPage, ...pageFns }[SET.page]() + pageNotes(SET.page);
     content.scrollTop = scroll;
   }
   // 设置窗口和软件一样固定 720 宽（不再跟着岛变宽）
@@ -796,13 +805,15 @@
       return;
     }
     if (e.target.closest("[data-copy]")) {
-      const report = "islet 1.4.1 (80) · 诊断报告（示例）\n机型：Mac（示例）\n系统：macOS 15\n传感器：8 个\n风扇：自动";
+      const report = "islet 1.4.2 (81) · 诊断报告（示例）\n机型：Mac（示例）\n系统：macOS 15\n传感器：8 个\n风扇：自动";
       navigator.clipboard?.writeText(report).catch(() => {});
       showToast("已复制诊断报告（示例），到 GitHub 粘贴即可");
       return;
     }
     if (dragMoved) return;   // 刚拖完松手，不当成点击
     if (e.target.closest("[data-mets]")) { SET.metsOpen = !SET.metsOpen; renderSettings(); return; }   // 系统指标卡片展开 / 收起
+    const fl = e.target.closest("[data-float]");
+    if (fl) { SET.float = fl.dataset.float === "1"; applySettingChange(); return; }   // 显示位置：悬浮 / 菜单栏
     const sp = e.target.closest("[data-split]");
     if (sp) { SET.split = sp.dataset.split === "1"; applySettingChange(); return; }
     const t = e.target.closest("[data-set],[data-page]");
@@ -1053,7 +1064,7 @@
     const check = (on) => `<i>${on ? "✓" : ""}</i>`;
     const item = (m, label, { on = false, off = false, id = "", kbd = "" } = {}) =>
       `<div class="${off ? "dis" : ""}" ${off ? "" : `data-m="${m}"`} ${id ? `data-id="${id}"` : ""}>${check(on)}${label}${kbd ? `<kbd>${kbd}</kbd>` : ""}</div>`;
-    let html = `<div class="dis"><i></i>islet 1.4.1</div><hr>`;
+    let html = `<div class="dis"><i></i>islet 1.4.2</div><hr>`;
     if (at && shown.includes(at)) {
       const name = nameOf(at);
       html += item("vis", isModule(at) ? `隐藏${name}模块` : /^[A-Za-z]/.test(name) ? `隐藏 ${name} 指标` : `隐藏${name}指标`, { off: lastOne, id: at });

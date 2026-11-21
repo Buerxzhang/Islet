@@ -357,6 +357,32 @@ struct SettingsView: View {
 
     // MARK: 分页内容
 
+    /// 页尾说明：行里只放标题和控件，较长的功能解释、注意事项统一放在页面最下面（小号灰字）
+    private static let notes: [SettingsPage: [(String, String)]] = [
+        .menuBar: [("胶囊", "玻璃样式仅在悬浮模式下生效。"),
+                   ("显示内容", "至少要保留一项。想完全不显示灵动岛，可以只保留音乐（不放歌时就不显示），或按 ⌘Q 退出 islet。")],
+        .music: [("频谱", "需要授权「系统录音」权限，只读取正在播放的声音来画频谱，不录麦克风。"),
+                 ("兼容性", "会自动识别「音乐」类软件；遇到不适配的软件，欢迎在「关于」页反馈。")],
+        .metrics: [("帧率", "是前台窗口所在屏幕每秒画面变化的次数，画面静止时会变低。")],
+        .fan: [("调速", "通过未公开的接口实现，系统升级后可能失效。转速有安全下限，退出 islet 或电脑睡眠时会交还系统。遇到异常，请把调速策略切回「自动」或卸载组件。")],
+        .bluetooth: [("电量", "由系统读取蓝牙设备上报的电量。各设备的协议不同，部分设备可能读不到或不准。")],
+        .extensions: [("HiDPI", "需要输入管理员密码写入系统配置，并且要显示器支持。打开后如果显示异常，请关掉它。")],
+    ]
+
+    @ViewBuilder private func pageNotes(_ p: Palette, _ notes: [(String, String)]) -> some View {
+        if !notes.isEmpty {
+            VStack(alignment: .leading, spacing: 6) {
+                ForEach(notes, id: \.0) { title, text in
+                    (Text("「\(title)」").foregroundStyle(p.text2) + Text(text).foregroundStyle(p.text3))
+                        .font(Typo.settingsCaption)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .padding(.horizontal, 4)
+            .padding(.top, 6)
+        }
+    }
+
     private func page(_ p: Palette) -> some View {
         VStack(alignment: .leading, spacing: 18) {
             Text(model.page.title).font(.system(size: 20, weight: .semibold)).foregroundStyle(p.text)
@@ -373,6 +399,7 @@ struct SettingsView: View {
             case .extensions: extensionsPage(p)
             case .about: aboutPage(p)
             }
+            pageNotes(p, Self.notes[model.page] ?? [])
         }
         .padding(.horizontal, 22)
         .padding(.vertical, 20)
@@ -406,13 +433,13 @@ struct SettingsView: View {
             row(p, "刷新频率", "越快越耗电", icon: "arrow.clockwise", tint: Color(hex: 0x0A84FF)) {
                 Segmented(options: [(0, "1 秒"), (1, "2 秒"), (2, "3 秒")],
                           selection: model.selection(.interval)) { model.select(.interval, $0) }
-                    .frame(width: 170)
+                    .frame(width: SettingsLayout.control)
             }
             divider(p)
             row(p, "排行条数", nil, icon: "list.number", tint: Color(hex: 0x32ADE6)) {
                 Segmented(options: [(0, "3"), (1, "5"), (2, "8")],
                           selection: model.selection(.count)) { model.select(.count, $0) }
-                    .frame(width: 170)
+                    .frame(width: SettingsLayout.control)
             }
         }
         section(p, "重置") {
@@ -426,29 +453,40 @@ struct SettingsView: View {
         }
     }
 
-    /// 悬浮胶囊显示在哪块屏：主屏幕（跟着系统的主显示器走），或固定某块屏。
-    /// 屏幕名称与“显示器”设置一致，带上主屏 / 扩展屏，同型号的两块屏也分得清。
-    private func islandScreenMenu() -> some View {
-        let screens = NSScreen.screens.enumerated().compactMap { index, screen in
-            AppDelegate.screenUUID(screen).map { ($0, "\(screen.localizedName)（\(index == 0 ? "主屏" : "扩展屏")）") }
-        }
-        let current = AppDelegate.islandScreen
-        let title = current == "main" ? "主屏幕" : screens.first { $0.0 == current }?.1 ?? "指定的屏幕（未连接）"
-        return Menu(title) {
-            Button("主屏幕") { model.onIslandScreen("main") }
-            Divider()
-            ForEach(screens, id: \.0) { uuid, name in
-                Button(name) { model.onIslandScreen(uuid) }
+    /// 悬浮胶囊显示在哪块屏：主屏（跟着系统的主显示器走），或固定某块扩展屏。
+    @ViewBuilder private func islandScreenMenu() -> some View {
+        // 主屏 = 跟着系统的主显示器走；扩展屏按 UUID 固定。之前固定选了主屏那块的，也当作“主屏”
+        let primary = NSScreen.screens.first.flatMap(AppDelegate.screenUUID)
+        let extras = NSScreen.screens.dropFirst().compactMap { screen in AppDelegate.screenUUID(screen).map { ($0, screen.localizedName) } }
+        let stored = AppDelegate.islandScreen
+        let current = stored == primary ? "main" : stored
+        if extras.count == 1, current == "main" || current == extras[0].0 {
+            // 两块屏：和其他行一样用分段选择
+            Segmented(options: [("main", "主屏"), (extras[0].0, "扩展屏")], selection: current) { model.onIslandScreen($0) }
+                .frame(width: SettingsLayout.control)
+        } else {
+            // 三块屏及以上，或选过的屏没接着：下拉菜单
+            let title = current == "main" ? "主屏" : extras.first { $0.0 == current }?.1 ?? "指定的屏幕（未连接）"
+            Menu(title) {
+                Button("主屏") { model.onIslandScreen("main") }
+                Divider()
+                ForEach(extras, id: \.0) { uuid, name in
+                    Button(name) { model.onIslandScreen(uuid) }
+                }
             }
+            .fixedSize()
+            .frame(width: SettingsLayout.control, alignment: .trailing)   // 下拉菜单按内容宽度画，靠右和其他控件对齐
         }
-        .frame(width: 160)
     }
 
     /// 灵动岛：位置、底色，以及岛上显示的内容（顺序与岛上一致）。各模块自己的设置在左侧单独的页里。
     @ViewBuilder private func menuBarPage(_ p: Palette) -> some View {
         section(p, "胶囊") {
-            row(p, "悬浮显示", nil, icon: "rectangle.on.rectangle", tint: Color(hex: 0x0A84FF)) {
-                Toggle2(isOn: AppDelegate.floatsIsland, onChange: model.onFloatingIsland)
+            // 显示位置二选一：悬浮在刘海 / 菜单栏下方，或放在菜单栏里（和右键菜单的“悬浮显示 / 在菜单栏显示”联动）
+            row(p, "显示位置", nil, icon: "rectangle.on.rectangle", tint: Color(hex: 0x0A84FF)) {
+                Segmented(options: [(true, "悬浮"), (false, "菜单栏")], selection: AppDelegate.floatsIsland,
+                          onSelect: model.onFloatingIsland)
+                    .frame(width: SettingsLayout.control)
             }
             divider(p)
             if AppDelegate.floatsIsland {
@@ -478,7 +516,7 @@ struct SettingsView: View {
             divider(p)
             row(p, "胶囊形态", nil, icon: "square.split.2x1", tint: Color(hex: 0xBF5AF2)) {
                 Segmented(options: [(true, "分体"), (false, "合并")], selection: MetricsIslandView.splits, onSelect: model.setSplit)
-                    .frame(width: 140)
+                    .frame(width: SettingsLayout.control)
             }
             divider(p)
             // 样式：胶囊底色；玻璃只在悬浮时可用（菜单栏里会透出系统的按下高亮），不悬浮时置灰、按黑色画
@@ -495,7 +533,7 @@ struct SettingsView: View {
                     model.onMetricOrder()   // 重画胶囊（玻璃开关）
                     model.refresh()
                 }
-                .frame(width: 200)
+                .frame(width: SettingsLayout.control)
             }
         }
         itemList(p)
@@ -547,11 +585,6 @@ struct SettingsView: View {
                         }
                     }
                 }
-            }
-            if !Metric.allCases.contains(where: \.isShown) {
-                // 音乐、蓝牙只在播放 / 连接时出现，没有常驻指标时胶囊可能整个消失
-                Text("指标全关时胶囊可能消失")
-                    .font(Typo.settingsCaption).foregroundStyle(p.text3)
             }
             LinkButton(title: "恢复默认显示和顺序", muted: true) {
                 guard confirmAlert("恢复岛上项目的默认显示？",
@@ -699,49 +732,65 @@ struct SettingsView: View {
         VStack(alignment: .leading, spacing: 0) { content() }
     }
 
-    private func detailRow<Control: View>(_ p: Palette, _ title: String, _ subtitle: String? = nil, @ViewBuilder control: () -> Control) -> some View {
-        HStack(spacing: 12) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title).font(Typo.settingsBody).foregroundStyle(p.text)
-                if let subtitle { Text(subtitle).font(Typo.settingsCaption).foregroundStyle(p.text3) }
-            }
-            Spacer(minLength: 8)
-            control()
-        }
-        .padding(.vertical, 6)
+    /// 模块页（音乐、系统指标、蓝牙电量）的一行：和其他页一样带彩色图标
+    private func detailRow<Control: View>(_ p: Palette, _ title: String, _ subtitle: String? = nil, icon: String, tint: Color,
+                                          @ViewBuilder control: () -> Control) -> some View {
+        row(p, title, subtitle, icon: icon, tint: tint, control: control)
     }
 
     private func musicDetail(_ p: Palette) -> some View {
         detail(p) {
-            detailRow(p, "其他程序的声音") {
+            detailRow(p, "其他程序的声音", icon: "gamecontroller", tint: Color(hex: 0xFF375F)) {
                 Toggle2(isOn: SpectrumController.showsOtherSounds) { on in
                     UserDefaults.standard.set(on, forKey: "spectrumOtherSounds")
                     SpectrumController.shared.otherSoundsChanged()
                     model.refresh()
                 }
             }
-            detailRow(p, "声音停止后收起") {   // 只管视频、网页、游戏等；音乐软件暂停时一直显示
+            divider(p)
+            detailRow(p, "声音停止后收起", icon: "timer", tint: Color(hex: 0xFF9F0A)) {   // 只管视频、网页、游戏等；音乐软件暂停时一直显示
                 Segmented(options: SpectrumController.hideDelayChoices,
                           selection: UserDefaults.standard.object(forKey: "spectrumHideDelay") as? Int ?? 10) { value in
                     UserDefaults.standard.set(value, forKey: "spectrumHideDelay")
                     SpectrumController.shared.hideDelayChanged()
                     model.refresh()
                 }
-                .frame(width: 220)
+                .frame(width: SettingsLayout.control)
             }
-            SpectrumLookEditor(look: SpectrumLook.current, part: .music) { look in
-                SpectrumController.shared.setLook(look)
-                model.refresh()
+            let look = SpectrumLook.current
+            let setLook: (SpectrumLook) -> Void = { SpectrumController.shared.setLook($0); model.refresh() }
+            divider(p)
+            detailRow(p, "形状", icon: "chart.bar", tint: Color(hex: 0x5E5CE6)) {
+                Segmented(options: SpectrumLook.Shape.allCases.map { ($0, $0.label) }, selection: look.shape) { value in
+                    var next = look; next.shape = value; setLook(next)
+                }
+                .frame(width: SettingsLayout.control)
             }
-            .padding(.vertical, 6)
-            detailRow(p, "灵敏度") {
+            divider(p)
+            detailRow(p, "颜色", icon: "paintpalette", tint: Color(hex: 0xBF5AF2)) {
+                Segmented(options: SpectrumLook.Tint.allCases.map { ($0, $0.label) }, selection: look.tint) { value in
+                    var next = look; next.tint = value; setLook(next)
+                }
+                .frame(width: SettingsLayout.control)
+            }
+            divider(p)
+            detailRow(p, "封面旋转", icon: "opticaldisc", tint: Color(hex: 0x8E8E93)) {
+                Toggle2(isOn: look.spin) { on in var next = look; next.spin = on; setLook(next) }
+            }
+            divider(p)
+            detailRow(p, "播放按钮", icon: "playpause", tint: Color(hex: 0x30D158)) {
+                Toggle2(isOn: look.controls) { on in var next = look; next.controls = on; setLook(next) }
+            }
+            divider(p)
+            detailRow(p, "灵敏度", icon: "slider.horizontal.3", tint: Color(hex: 0x0A84FF)) {
                 Segmented(options: SpectrumAnalyzer.sensitivityChoices, selection: SpectrumAnalyzer.sensitivity) { value in
                     SpectrumAnalyzer.sensitivity = value
                     model.refresh()
                 }
-                .frame(width: 190)
+                .frame(width: SettingsLayout.control)
             }
-            detailRow(p, "系统录音权限", "不录麦克风") {
+            divider(p)
+            detailRow(p, "系统录音权限", "不录麦克风", icon: "mic.slash", tint: Color(hex: 0x8E8E93)) {
                 PlainButton(title: "打开权限设置") {
                     if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_AudioCapture") {
                         NSWorkspace.shared.open(url)
@@ -753,22 +802,24 @@ struct SettingsView: View {
 
     private func networkDetail(_ p: Palette) -> some View {
         detail(p) {
-            detailRow(p, "显示方式", "自动：只显示较快的一方") {
+            detailRow(p, "显示方式", "自动：只显示较快的一方", icon: "arrow.up.arrow.down", tint: Color(hex: 0x0A84FF)) {
                 Segmented(options: [(0, "自动"), (1, "上传和下载")], selection: min(model.selection(.direction), 1)) { value in
                     UserDefaults.standard.set(value, forKey: "networkLastMode")
                     model.select(.direction, value)
                 }
-                .frame(width: 180)
+                .frame(width: SettingsLayout.control)
             }
-            detailRow(p, "单位") {
+            divider(p)
+            detailRow(p, "单位", icon: "ruler", tint: Color(hex: 0x30D158)) {
                 Segmented(options: [(false, "MB/s"), (true, "Mb/s")], selection: Units.bits) { value in
                     UserDefaults.standard.set(value, forKey: "unitBits")
                     model.onUnits()
                     model.refresh()
                 }
-                .frame(width: 140)
+                .frame(width: SettingsLayout.control)
             }
-            detailRow(p, "流量统计每月起始日", "对齐运营商账单") {
+            divider(p)
+            detailRow(p, "流量统计每月起始日", "对齐运营商账单", icon: "calendar", tint: Color(hex: 0xFF453A)) {
                 Menu("\(TrafficLedger.monthStart) 日") {
                     ForEach(1...28, id: \.self) { day in
                         Button("\(day) 日") {
@@ -777,9 +828,11 @@ struct SettingsView: View {
                         }
                     }
                 }
-                .frame(width: 90)
+                .fixedSize()
+                .frame(width: SettingsLayout.control, alignment: .trailing)
             }
-            detailRow(p, "清零流量统计") {
+            divider(p)
+            detailRow(p, "清零流量统计", icon: "arrow.counterclockwise", tint: Color(hex: 0x8E8E93)) {
                 PlainButton(title: "清零") {
                     guard confirmAlert("清零流量统计？", "今日和本月的上传、下载记录会归零。") else { return }
                     TrafficLedger.shared.reset()
@@ -793,7 +846,7 @@ struct SettingsView: View {
     private func fpsDetail(_ p: Palette) -> some View {
         let authorized = CGPreflightScreenCaptureAccess()
         return detail(p) {
-            detailRow(p, "屏幕录制权限", authorized ? nil : "授权后需重启 islet") {
+            detailRow(p, "屏幕录制权限", authorized ? nil : "授权后需重启 islet", icon: "record.circle", tint: Color(hex: 0xFF375F)) {
                 PlainButton(title: authorized ? "已授权" : "打开权限设置") {
                     if !authorized { CGRequestScreenCaptureAccess() }
                     if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture") {
@@ -807,13 +860,13 @@ struct SettingsView: View {
     /// 温度：单位（影响所有温度显示，所以放在“温度”这一项，不藏在风扇里）。
     private func temperatureDetail(_ p: Palette) -> some View {
         detail(p) {
-            detailRow(p, "温度单位") {
+            detailRow(p, "温度单位", icon: "thermometer.medium", tint: Color(hex: 0xFF9F0A)) {
                 Segmented(options: [(false, "℃"), (true, "℉")], selection: Units.fahrenheit) { value in
                     UserDefaults.standard.set(value, forKey: "unitFahrenheit")
                     model.onUnits()
                     model.refresh()
                 }
-                .frame(width: 120)
+                .frame(width: SettingsLayout.control)
             }
         }
     }
@@ -825,7 +878,7 @@ struct SettingsView: View {
                           selection: fanClient.config.basis) { basis in
                     fanClient.update { $0.basis = basis }
                 }
-                .frame(width: 170)
+                .frame(width: SettingsLayout.control)
             }
             divider(p)
             row(p, "温度曲线", fanClient.config.preset.map { "预设：\($0.label)" } ?? "自定义（\(fanClient.config.curve.count) 个控制点）",
@@ -867,32 +920,31 @@ struct SettingsView: View {
                 .foregroundStyle(p.text3)
             }
         
-            Text("通过未公开接口调速，系统升级后可能失效")
-                .font(Typo.settingsCaption).foregroundStyle(p.text3)
-                .fixedSize(horizontal: false, vertical: true)
-                .padding(.vertical, 6)
         }
     }
 
     private func bluetoothDetail(_ p: Palette) -> some View {
         let sound = SoundController.shared.panel
         return detail(p) {
-            detailRow(p, "低电量提醒") {
+            detailRow(p, "低电量提醒", icon: "battery.25percent", tint: Color(hex: 0xFF453A)) {
                 toggle("alertLowBattery", default: true) { _ in
                     AlertCenter.shared.prepare()
                     SoundController.shared.startBluetoothItem()   // 岛上不显示蓝牙时，提醒要靠它定时读电量
                 }
             }
             if AlertCenter.lowBatteryEnabled {
-                detailRow(p, "提醒电量") {
+                divider(p)
+                detailRow(p, "提醒电量", icon: "gauge.with.dots.needle.33percent", tint: Color(hex: 0xFF9F0A)) {
                     Segmented(options: AlertCenter.lowBatteryChoices, selection: AlertCenter.lowBatteryThreshold) { value in
                         UserDefaults.standard.set(value, forKey: "alertLowBatteryThreshold")
                         model.refresh()
                     }
-                    .frame(width: 200)
+                    .frame(width: SettingsLayout.control)
                 }
-                detailRow(p, "提示音") { toggle("alertSound", default: true) }
-                detailRow(p, "测试通知") {
+                divider(p)
+                detailRow(p, "提示音", icon: "speaker.wave.2", tint: Color(hex: 0x0A84FF)) { toggle("alertSound", default: true) }
+                divider(p)
+                detailRow(p, "测试通知", icon: "bell", tint: Color(hex: 0x30D158)) {
                     PlainButton(title: "发送测试通知") {
                         let device = sound.allDevices.first { $0.connected && SoundController.batteryLevel($0.battery) != nil }
                         AlertCenter.shared.sendTest(device: device.map { ($0.name, $0.symbol, SoundController.batteryLevel($0.battery) ?? 20) })
@@ -993,13 +1045,13 @@ struct SettingsView: View {
                 row(p, "滚动距离", nil, icon: "arrow.up.and.down", tint: Color(hex: 0x30D158)) {
                     Segmented(options: SmoothScrollController.Distance.allCases.map { ($0, $0.label) },
                               selection: smoothScroll.options.distance, onSelect: smoothScroll.setDistance)
-                        .frame(width: 150)
+                        .frame(width: SettingsLayout.control)
                 }
                 divider(p)
                 row(p, "平滑程度", nil, icon: "waveform.path", tint: Color(hex: 0xFF9F0A)) {
                     Segmented(options: SmoothScrollController.Smoothness.allCases.map { ($0, $0.label) },
                               selection: smoothScroll.options.smoothness, onSelect: smoothScroll.setSmoothness)
-                        .frame(width: 150)
+                        .frame(width: SettingsLayout.control)
                 }
                 divider(p)
                 row(p, "反转滚动方向", "不影响触控板", icon: "arrow.up.arrow.down", tint: Color(hex: 0x5E5CE6)) {

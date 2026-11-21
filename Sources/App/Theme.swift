@@ -65,6 +65,11 @@ enum Typo {
     }
 }
 
+/// 设置页右侧控件（分段选择、下拉菜单）统一宽度：一列对齐，左右边都齐
+enum SettingsLayout {
+    static let control: CGFloat = 200
+}
+
 /// 面板和窗口统一用浅色（不再有主题设置）。
 struct Themed<Content: View>: View {
     let content: (Palette) -> Content

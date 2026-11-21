@@ -1136,7 +1136,7 @@ final class SpectrumController: NSObject, NSPopoverDelegate {
         panel.look = SpectrumLook.current
         panel.error = analyzer.error
         popover.appearance = NSAppearance(named: .aqua)   // 面板统一浅色
-        popover.show(relativeTo: anchor, of: sender, preferredEdge: .minY)
+        popover.showAboveApps(relativeTo: anchor, of: sender, preferredEdge: .minY)
         schedule(fast: true)  // 面板里的大号频谱需要实时刷新
         SoundController.shared.controlsWillShow()
         clickMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in

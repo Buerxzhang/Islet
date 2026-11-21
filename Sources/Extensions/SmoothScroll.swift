@@ -9,13 +9,12 @@ final class SmoothScrollController: ObservableObject {
     static let shared = SmoothScrollController()
 
     enum State: Equatable {
-        case off, permissionRequired, pausedForOther, unavailable, active
+        case off, permissionRequired, unavailable, active
 
         var description: String {
             switch self {
             case .off, .active: return ""   // 正常时设置里不显示说明
             case .permissionRequired: return "需要辅助功能权限"
-            case .pausedForOther: return "另一个平滑滚动工具正在运行，退出它后自动启用"
             case .unavailable: return "未能开始，请重新检查辅助功能权限"
             }
         }
@@ -64,9 +63,6 @@ final class SmoothScrollController: ObservableObject {
     }
 
     func start() {
-        let workspace = NSWorkspace.shared.notificationCenter
-        workspace.addObserver(self, selector: #selector(environmentChanged(_:)), name: NSWorkspace.didLaunchApplicationNotification, object: nil)
-        workspace.addObserver(self, selector: #selector(environmentChanged(_:)), name: NSWorkspace.didTerminateApplicationNotification, object: nil)
         // 用户在系统设置里刚授权回来：切回 islet 时重新检查
         NotificationCenter.default.addObserver(self, selector: #selector(recheck), name: NSApplication.didBecomeActiveNotification, object: nil)
         reconcile()
@@ -98,22 +94,12 @@ final class SmoothScrollController: ObservableObject {
         }
     }
 
-    @objc private func environmentChanged(_ notification: Notification) {
-        guard let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
-              app.bundleIdentifier?.lowercased() == Self.otherScrollerBundle else { return }
-        reconcile()
-    }
-
     @objc private func recheck() { reconcile() }
-
-    private static let otherScrollerBundle = "com.caldis.mos"
 
     private func reconcile() {
         let next: State
         if !enabled {
             next = .off
-        } else if NSWorkspace.shared.runningApplications.contains(where: { !$0.isTerminated && $0.bundleIdentifier?.lowercased() == Self.otherScrollerBundle }) {
-            next = .pausedForOther   // 两个平滑滚动同时生效会叠加成双倍距离
         } else if !AXIsProcessTrusted() {
             next = .permissionRequired
         } else {

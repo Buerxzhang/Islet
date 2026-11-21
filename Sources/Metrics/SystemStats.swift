@@ -129,16 +129,18 @@ struct ProcessSample {
         return days * 86_400 + seconds
     }
 
-    /// 按应用汇总的 CPU 占用（单核 = 100%，与活动监视器一致）。
+    /// 按应用汇总的 CPU 占用，整机口径（全部核心跑满 = 100%），和面板圆环、胶囊上的数字一致。
+    /// 不用活动监视器的单核口径：那样一个应用能显示 776%，和圆环的 100% 放在一起看不懂。
     func cpuRanking(since previous: ProcessSample) -> [RankedApp] {
         let elapsed = time - previous.time
+        let cores = Double(max(ProcessInfo.processInfo.activeProcessorCount, 1))
         guard elapsed > 0, elapsed < 70 else { return [] }
         var apps: [String: Double] = [:]
         var pids: [String: [Int32]] = [:]
         for (pid, now) in entries {
             guard let old = previous.entries[pid], old.path == now.path, now.cpuTime > old.cpuTime else { continue }
             let identity = AppIdentityResolver.identity(forPath: now.path)
-            apps[identity, default: 0] += (now.cpuTime - old.cpuTime) / elapsed * 100
+            apps[identity, default: 0] += (now.cpuTime - old.cpuTime) / elapsed / cores * 100
             pids[identity, default: []].append(pid)
         }
         return apps.filter { $0.value >= 0.1 }
